@@ -135,19 +135,11 @@ export class WsServer {
           stats,
           detail,
         };
-        // Let the local LLM parse it into a plain-language summary + quick replies
-        // (bounded so a slow model never delays the approval long).
-        if (this.llm) {
-          const exp = await Promise.race([
-            this.llm.explainApproval(tool, detail, risk, DEFAULT_LOCALE),
-            new Promise<{ summary: string; suggestions: string[] }>((r) =>
-              setTimeout(() => r({ summary: "", suggestions: [] }), 5000),
-            ),
-          ]).catch(() => ({ summary: "", suggestions: [] }));
-          if (exp.summary) approval.summary = exp.summary;
-          if (exp.suggestions.length) approval.suggestions = exp.suggestions;
-        }
-        const decision = await this.#approvals.request(approval, key, session);
+        // Push the card NOW; let the LLM parse a plain-language summary + quick replies
+        // in the background and send an approval.update when ready (no push-path latency).
+        const decisionP = this.#approvals.request(approval, key, session);
+        if (this.llm) void this.#enrichApproval(approval, tool, detail, risk);
+        const decision = await decisionP;
         res.writeHead(200, { "content-type": "application/json" }).end(
           JSON.stringify({
             hookSpecificOutput: {
@@ -168,6 +160,16 @@ export class WsServer {
 
   #broadcastApproval(approval: ApprovalRequest): void {
     const f = frame("approval.request", { approval });
+    for (const socket of this.#authed) send(socket, f);
+  }
+
+  /** Background: LLM-parse an approval and broadcast the enrichment as an update. */
+  async #enrichApproval(approval: ApprovalRequest, tool: string, detail: string, risk: string): Promise<void> {
+    const exp = await this.llm!.explainApproval(tool, detail, risk, DEFAULT_LOCALE).catch(() => null);
+    if (!exp || (!exp.summary && !exp.suggestions.length)) return;
+    if (exp.summary) approval.summary = exp.summary; // also enriches welcome-replay
+    if (exp.suggestions.length) approval.suggestions = exp.suggestions;
+    const f = frame("approval.update", { id: approval.id, summary: approval.summary, suggestions: approval.suggestions });
     for (const socket of this.#authed) send(socket, f);
   }
 

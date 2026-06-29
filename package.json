@@ -17,6 +17,7 @@
     "daemon:on": "./bin/cato-daemon.sh on",
     "daemon:off": "./bin/cato-daemon.sh off",
     "build": "npm run build -w @cato/shared && npm run build -w @cato/desktop-agent",
+    "test": "node --import tsx --test packages/desktop-agent/test/*.test.ts",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "dev:agent": "npm run dev -w @cato/desktop-agent",
     "db:up": "docker compose -f infra/docker-compose.yml up -d",

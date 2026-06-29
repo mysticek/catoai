@@ -85,6 +85,7 @@ export type ServerMessage =
   | Envelope<"status.update", { projects: ProjectStatus[] }>
   | Envelope<"event.push", { event: CatoEvent }>
   | Envelope<"approval.request", { approval: ApprovalRequest }>
+  | Envelope<"approval.update", { id: string; summary?: string; suggestions?: string[] }>
   | Envelope<"agent.question", { question: AgentQuestion }>
   | Envelope<"error", { code: string; message: string }>
   | Envelope<"pong", Record<string, never>>;
