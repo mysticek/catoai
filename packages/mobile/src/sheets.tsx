@@ -1,11 +1,11 @@
 /**
  * Cato modal sheets — approval detail (+ trust scopes + deny-with-reason),
- * multi-choice prompt, and start-an-agent. Presentational; App wires the actions.
+ * multi-choice prompt, and start-an-agent. StyleSheet only; App wires the actions.
  */
 import { useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { C, R, S, tint, MONO, STATUS, StatusKey } from "./theme";
-import { Icon, Dot, Pill, Btn } from "./ui";
+import { C, tint, MONO } from "./theme";
+import { Icon, Pill, Btn, L } from "./ui";
 import type { ApprovalRequest, AgentQuestion, ProjectStatus } from "./catoClient";
 
 type Scope = "once" | "session" | "command";
@@ -32,20 +32,20 @@ export function ApprovalDetailSheet({
       <View style={st.root}>
         <View style={st.handleRow}>
           <Pressable onPress={close} hitSlop={10}><Icon name="arrowLeft" size={22} color={C.textDim} /></Pressable>
-          <View style={{ flex: 1, marginLeft: 12 }}>
+          <View style={st.handleBody}>
             <Text style={st.title}>{a.title}</Text>
             <Text style={st.meta}>{[a.project, a.tool].filter(Boolean).join(" · ")}</Text>
           </View>
           <Pill color={color}>{a.risk.toUpperCase()}</Pill>
         </View>
 
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingTop: 8 }} showsVerticalScrollIndicator={false}>
+        <ScrollView style={L.fill} contentContainerStyle={st.body} showsVerticalScrollIndicator={false}>
           {a.risk === "high" && (
-            <View style={[st.banner, { backgroundColor: tint(C.attention, 0.1), borderColor: tint(C.attention, 0.3) }]}>
+            <View style={st.banner}>
               <Icon name="warning" size={19} color={C.attention} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: C.attention, fontWeight: "600", fontSize: 13.5, marginBottom: 3 }}>High risk · destructive</Text>
-                <Text style={{ color: "#c79b9b", fontSize: 12.5, lineHeight: 18 }}>{a.summary || "This action could be hard to undo. Review carefully."}</Text>
+              <View style={L.flex1}>
+                <Text style={st.bannerTitle}>High risk · destructive</Text>
+                <Text style={st.bannerText}>{a.summary || "This action could be hard to undo. Review carefully."}</Text>
               </View>
             </View>
           )}
@@ -56,24 +56,24 @@ export function ApprovalDetailSheet({
             {lines.map((l, i) => {
               const add = l.startsWith("+"); const del = l.startsWith("-");
               return (
-                <Text key={i} style={[st.codeText, add && { color: C.add }, del && { color: C.del }, a.tool === "Bash" && { color: "#e6c4c4" }]}>
-                  {a.tool === "Bash" ? <Text style={{ color: C.textMute }}>$ </Text> : null}{l || " "}
+                <Text key={i} style={[st.codeText, add && st.addFg, del && st.delFg, a.tool === "Bash" && st.cmdFg]}>
+                  {a.tool === "Bash" ? <Text style={st.dollar}>$ </Text> : null}{l || " "}
                 </Text>
               );
             })}
           </View>
 
-          {/* suggestions from the LLM (quick replies) */}
+          {/* LLM quick replies */}
           {a.suggestions && a.suggestions.length > 0 && (
             <>
               <Text style={st.label}>CATO SUGGESTS</Text>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              <View style={st.suggestions}>
                 {a.suggestions.map((sug, i) => (
                   <Pressable key={i} onPress={() => {
                     if (/deny|zamiet|odmiet/i.test(sug)) { onResolve(a.id, "deny", sug); close(); }
                     else { onResolve(a.id, "allow", undefined, scope); close(); }
                   }} style={st.suggestion}>
-                    <Text style={{ color: C.accent, fontSize: 13, fontWeight: "500" }}>{sug}</Text>
+                    <Text style={st.suggestionText}>{sug}</Text>
                   </Pressable>
                 ))}
               </View>
@@ -87,12 +87,15 @@ export function ApprovalDetailSheet({
                 ["once", "Just this once"],
                 ["session", "Allow for the rest of this run"],
                 ["command", "Always allow this exact command"],
-              ] as [Scope, string][]).map(([k, lbl]) => (
-                <Pressable key={k} onPress={() => setScope(k)} style={[st.radio, scope === k && { backgroundColor: tint(C.accent, 0.1), borderColor: C.accent }]}>
-                  <View style={[st.radioDot, scope === k ? { borderColor: C.accent, borderWidth: 6 } : { borderColor: "#44454d", borderWidth: 1.5 }]} />
-                  <Text style={[st.radioLabel, { color: scope === k ? C.text : "#c9cad1", fontWeight: scope === k ? "600" : "500" }]}>{lbl}</Text>
-                </Pressable>
-              ))}
+              ] as [Scope, string][]).map(([k, lbl]) => {
+                const on = scope === k;
+                return (
+                  <Pressable key={k} onPress={() => setScope(k)} style={[st.radio, on && st.radioOn]}>
+                    <View style={[st.radioDot, on ? st.radioDotOn : st.radioDotOff]} />
+                    <Text style={[st.radioLabel, on && st.radioLabelOn]}>{lbl}</Text>
+                  </Pressable>
+                );
+              })}
             </>
           )}
 
@@ -111,17 +114,17 @@ export function ApprovalDetailSheet({
         <View style={st.dock}>
           {!reasoning ? (
             <>
-              <Pressable onPress={() => { onResolve(a.id, "allow", undefined, scope); close(); }} style={[st.approve, { borderColor: tint(C.active, 0.45) }]}>
+              <Pressable onPress={() => { onResolve(a.id, "allow", undefined, scope); close(); }} style={st.approve}>
                 <Icon name="lockOpen" size={17} color={C.active} />
-                <Text style={{ color: C.active, fontWeight: "600", fontSize: 15 }}>Approve{scope !== "once" ? (scope === "session" ? " · this run" : " · always") : ""}</Text>
+                <Text style={st.approveText}>Approve{scope !== "once" ? (scope === "session" ? " · this run" : " · always") : ""}</Text>
               </Pressable>
-              <View style={{ flexDirection: "row", gap: 11, marginTop: 11 }}>
+              <View style={st.dockRow}>
                 <Btn label="Deny" kind="danger" flex={1} onPress={() => { onResolve(a.id, "deny"); close(); }} />
                 <Btn label="Deny + reason" kind="ghost" flex={1} icon="chat" onPress={() => setReasoning(true)} />
               </View>
             </>
           ) : (
-            <View style={{ flexDirection: "row", gap: 11 }}>
+            <View style={st.dockRowTight}>
               <Btn label="Back" kind="ghost" flex={1} onPress={() => setReasoning(false)} />
               <Btn label="Deny + send" kind="danger" flex={1.4} icon="chat" onPress={() => { onResolve(a.id, "deny", reason.trim() || undefined); close(); }} />
             </View>
@@ -139,16 +142,16 @@ export function MultiChoiceSheet({ question, onClose, onAnswer }: { question: Ag
       <Pressable style={st.backdrop} onPress={onClose} />
       <View style={st.sheet}>
         <View style={st.grabber} />
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 9, marginBottom: 4 }}>
+        <View style={st.askRow}>
           <View style={st.askLogo}><Icon name="chat" size={14} color={C.onAccent} /></View>
-          <Text style={{ color: C.accent, fontSize: 12, fontWeight: "600", letterSpacing: 1 }}>CATO IS ASKING</Text>
+          <Text style={st.askLabel}>CATO IS ASKING</Text>
         </View>
         {question.project ? <Text style={st.meta}>{question.project} · waiting on you</Text> : null}
         <Text style={st.question}>{question.question}</Text>
-        <View style={{ gap: 10, marginTop: 6 }}>
+        <View style={st.choices}>
           {question.options.map((opt, i) => (
             <Pressable key={i} onPress={() => { onAnswer(question.id, i); onClose(); }} style={st.choice}>
-              <View style={st.choiceNum}><Text style={{ color: C.accent, fontWeight: "700" }}>{i + 1}</Text></View>
+              <View style={st.choiceNum}><Text style={st.choiceNumText}>{i + 1}</Text></View>
               <Text style={st.choiceText}>{opt}</Text>
               <Icon name="caret" size={16} color={C.textFaint} />
             </Pressable>
@@ -171,17 +174,17 @@ export function StartAgentSheet({ projects, onClose, onStart }: { projects: Proj
       <Pressable style={st.backdrop} onPress={onClose} />
       <View style={st.sheet}>
         <View style={st.grabber} />
-        <Text style={[st.question, { marginBottom: 14 }]}>Start an agent</Text>
+        <Text style={[st.question, st.startTitle]}>Start an agent</Text>
 
         <Text style={st.label}>PROJECT</Text>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+        <View style={st.tagWrap}>
           {projects.map((p) => (
             <Pressable key={p.name} onPress={() => setProject(p.name)} style={[st.tag, project === p.name && st.tagOn]}>
-              <Text style={[st.tagText, project === p.name && { color: C.onAccent }]}>{p.name}</Text>
+              <Text style={[st.tagText, project === p.name && st.tagTextOn]}>{p.name}</Text>
             </Pressable>
           ))}
           <Pressable onPress={() => setProject("__new")} style={[st.tag, project === "__new" && st.tagOn]}>
-            <Text style={[st.tagText, project === "__new" && { color: C.onAccent }]}>+ New</Text>
+            <Text style={[st.tagText, project === "__new" && st.tagTextOn]}>+ New</Text>
           </Pressable>
         </View>
         {project === "__new" && (
@@ -189,23 +192,23 @@ export function StartAgentSheet({ projects, onClose, onStart }: { projects: Proj
         )}
 
         <Text style={st.label}>TASK</Text>
-        <TextInput value={task} onChangeText={setTask} multiline placeholder="What should it work on?" placeholderTextColor={C.textMute} style={[st.input, { height: 70, marginBottom: 14 }]} />
+        <TextInput value={task} onChangeText={setTask} multiline placeholder="What should it work on?" placeholderTextColor={C.textMute} style={[st.input, st.taskInput]} />
 
         <Text style={st.label}>AGENT</Text>
-        <View style={{ flexDirection: "row", gap: 8, marginBottom: 18 }}>
+        <View style={st.agentRow}>
           {[["claude-code", "Claude Code"], ["codex", "Codex"]].map(([k, lbl]) => (
-            <Pressable key={k} onPress={() => setAgent(k)} style={[st.tag, { flex: 1, alignItems: "center" }, agent === k && st.tagOn]}>
-              <Text style={[st.tagText, agent === k && { color: C.onAccent }]}>{lbl}</Text>
+            <Pressable key={k} onPress={() => setAgent(k)} style={[st.tag, st.agentTag, agent === k && st.tagOn]}>
+              <Text style={[st.tagText, agent === k && st.tagTextOn]}>{lbl}</Text>
             </Pressable>
           ))}
         </View>
 
         <Pressable
           onPress={() => { if (chosen) { onStart(chosen, agent, task.trim()); onClose(); } }}
-          style={[st.pairBtn, !chosen && { opacity: 0.5 }]}
+          style={[st.pairBtn, !chosen && st.disabled]}
         >
           <Icon name="rocket" size={17} color={C.onAccent} />
-          <Text style={{ color: C.onAccent, fontWeight: "600", fontSize: 16 }}>Start agent</Text>
+          <Text style={st.pairBtnText}>Start agent</Text>
         </Pressable>
       </View>
     </Modal>
@@ -215,33 +218,62 @@ export function StartAgentSheet({ projects, onClose, onStart }: { projects: Proj
 const st = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg, paddingTop: 54 },
   handleRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingBottom: 14 },
+  handleBody: { flex: 1, marginLeft: 12 },
   title: { color: C.text, fontSize: 16, fontWeight: "600" },
   meta: { color: C.textMute, fontSize: 12, fontWeight: "500", marginTop: 1 },
-  banner: { flexDirection: "row", gap: 11, alignItems: "flex-start", borderWidth: 1, borderRadius: 14, padding: 13, marginBottom: 14 },
+  body: { padding: 20, paddingTop: 8 },
+  banner: { flexDirection: "row", gap: 11, alignItems: "flex-start", borderWidth: 1, borderRadius: 14, padding: 13, marginBottom: 14, backgroundColor: tint(C.attention, 0.1), borderColor: tint(C.attention, 0.3) },
+  bannerTitle: { color: C.attention, fontWeight: "600", fontSize: 13.5, marginBottom: 3 },
+  bannerText: { color: "#c79b9b", fontSize: 12.5, lineHeight: 18 },
   summary: { color: C.textDim, fontSize: 13.5, lineHeight: 19, marginBottom: 14 },
   label: { color: C.textDim, fontSize: 12, fontWeight: "600", letterSpacing: 0.4, marginTop: 18, marginBottom: 9 },
   code: { backgroundColor: C.black, borderWidth: 1, borderColor: C.border, borderRadius: 12, padding: 13 },
   codeText: { fontFamily: MONO, fontSize: 13, color: C.text, lineHeight: 21 },
+  addFg: { color: C.add },
+  delFg: { color: C.del },
+  cmdFg: { color: "#e6c4c4" },
+  dollar: { color: C.textMute },
+  suggestions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   suggestion: { backgroundColor: tint(C.accent, 0.1), borderWidth: 1, borderColor: tint(C.accent, 0.25), borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9 },
+  suggestionText: { color: C.accent, fontSize: 13, fontWeight: "500" },
   radio: { flexDirection: "row", alignItems: "center", gap: 11, padding: 13, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 12, marginBottom: 8 },
+  radioOn: { backgroundColor: tint(C.accent, 0.1), borderColor: C.accent },
   radioDot: { width: 20, height: 20, borderRadius: 10, backgroundColor: C.bg },
-  radioLabel: { fontSize: 14 },
+  radioDotOn: { borderColor: C.accent, borderWidth: 6 },
+  radioDotOff: { borderColor: "#44454d", borderWidth: 1.5 },
+  radioLabel: { fontSize: 14, color: "#c9cad1", fontWeight: "500" },
+  radioLabelOn: { color: C.text, fontWeight: "600" },
   reasonInput: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 12, padding: 13, color: C.text, fontSize: 14, minHeight: 90, textAlignVertical: "top" },
   dock: { padding: 20, paddingBottom: 32, borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.bg },
-  approve: { height: 54, borderRadius: 15, borderWidth: 1, backgroundColor: tint(C.active, 0.16), flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9 },
+  dockRow: { flexDirection: "row", gap: 11, marginTop: 11 },
+  dockRowTight: { flexDirection: "row", gap: 11 },
+  approve: { height: 54, borderRadius: 15, borderWidth: 1, backgroundColor: tint(C.active, 0.16), borderColor: tint(C.active, 0.45), flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9 },
+  approveText: { color: C.active, fontWeight: "600", fontSize: 15 },
 
   backdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.55)" },
   sheet: { position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: "#121317", borderTopLeftRadius: 26, borderTopRightRadius: 26, borderWidth: 1, borderColor: C.borderStrong, padding: 22, paddingBottom: 34 },
   grabber: { alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.18)", marginBottom: 16 },
+  askRow: { flexDirection: "row", alignItems: "center", gap: 9, marginBottom: 4 },
   askLogo: { width: 24, height: 24, borderRadius: 7, backgroundColor: C.accent, alignItems: "center", justifyContent: "center" },
+  askLabel: { color: C.accent, fontSize: 12, fontWeight: "600", letterSpacing: 1 },
   question: { color: C.text, fontSize: 20, fontWeight: "600", letterSpacing: -0.3, marginTop: 8, lineHeight: 27 },
+  startTitle: { marginBottom: 14 },
+  choices: { gap: 10, marginTop: 6 },
   choice: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 14, padding: 14 },
   choiceNum: { width: 26, height: 26, borderRadius: 8, backgroundColor: tint(C.accent, 0.16), alignItems: "center", justifyContent: "center" },
+  choiceNumText: { color: C.accent, fontWeight: "700" },
   choiceText: { color: C.text, fontSize: 15, fontWeight: "500", flex: 1 },
   sheetHint: { color: C.textMute, fontSize: 12.5, textAlign: "center", marginTop: 16 },
+  tagWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 14 },
+  agentRow: { flexDirection: "row", gap: 8, marginBottom: 18 },
+  agentTag: { flex: 1, alignItems: "center" },
   tag: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 13, paddingVertical: 9 },
   tagOn: { backgroundColor: C.accent, borderColor: C.accent },
   tagText: { color: "#c9cad1", fontWeight: "600", fontSize: 13 },
+  tagTextOn: { color: C.onAccent },
   input: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 12, padding: 13, color: C.text, fontSize: 14, marginBottom: 8, textAlignVertical: "top" },
+  taskInput: { height: 70, marginBottom: 14 },
   pairBtn: { height: 54, backgroundColor: C.accent, borderRadius: 15, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  pairBtnText: { color: C.onAccent, fontWeight: "600", fontSize: 16 },
+  disabled: { opacity: 0.5 },
 });

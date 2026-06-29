@@ -7,6 +7,17 @@ import { Pressable, StyleSheet, Text, View, ViewStyle, TextStyle } from "react-n
 import { Ionicons } from "@expo/vector-icons";
 import { C, R, S, tint, MONO, STATUS, StatusKey } from "./theme";
 
+/** Shared layout utilities — compose with component styles to keep JSX free of
+ *  inline style objects (e.g. style={[L.rowBetween, s.card]}). */
+export const L = StyleSheet.create({
+  fill: { flex: 1 },
+  flex1: { flex: 1 },
+  row: { flexDirection: "row", alignItems: "center" },
+  rowTop: { flexDirection: "row", alignItems: "flex-start" },
+  rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  center: { alignItems: "center", justifyContent: "center" },
+});
+
 type IoniconName = keyof typeof Ionicons.glyphMap;
 
 // Design uses Phosphor; map the ones we need to Ionicons.
@@ -48,7 +59,7 @@ export function Icon({ name, size = 18, color = C.text }: { name: keyof typeof I
 }
 
 export function Dot({ color, glow }: { color: string; glow?: boolean }) {
-  return <View style={[s.dot, { backgroundColor: color }, glow && { shadowColor: color, shadowOpacity: 0.9, shadowRadius: 5 }]} />;
+  return <View style={[s.dot, { backgroundColor: color }, glow && [s.glow, { shadowColor: color }]]} />;
 }
 
 export function StatusDot({ state, glow }: { state: StatusKey; glow?: boolean }) {
@@ -66,9 +77,9 @@ export function Pill({ children, color = C.textDim, bg, style }: { children: Rea
 export function RiskBadge({ risk }: { risk: "low" | "medium" | "high" }) {
   const color = risk === "high" ? C.attention : risk === "medium" ? C.waiting : C.active;
   return (
-    <View style={[s.pill, { backgroundColor: tint(color, 0.16), flexDirection: "row", alignItems: "center", gap: 4 }]}>
+    <View style={[s.riskBadge, { backgroundColor: tint(color, 0.16) }]}>
       {risk === "high" && <Icon name="warning" size={11} color={color} />}
-      <Text style={[s.pillText, { color, letterSpacing: 0.5 }]}>{risk === "high" ? "HIGH RISK" : risk.toUpperCase()}</Text>
+      <Text style={[s.riskText, { color }]}>{risk === "high" ? "HIGH RISK" : risk.toUpperCase()}</Text>
     </View>
   );
 }
@@ -115,7 +126,7 @@ export function Btn({
 }
 
 export function Mono({ children, style }: { children: ReactNode; style?: TextStyle }) {
-  return <Text style={[{ fontFamily: MONO, color: C.text, fontSize: 12.5 }, style]}>{children}</Text>;
+  return <Text style={[s.mono, style]}>{children}</Text>;
 }
 
 export function IconChip({ name, color = C.accent, bg, onPress }: { name: keyof typeof ICON; color?: string; bg?: string; onPress?: () => void }) {
@@ -128,8 +139,12 @@ export function IconChip({ name, color = C.accent, bg, onPress }: { name: keyof 
 
 const s = StyleSheet.create({
   dot: { width: 9, height: 9, borderRadius: 5 },
+  glow: { shadowOpacity: 0.9, shadowRadius: 5 },
   pill: { borderRadius: R.sm, paddingHorizontal: 8, paddingVertical: 3, alignSelf: "flex-start" },
   pillText: { fontSize: 10.5, fontWeight: "700" },
+  riskBadge: { borderRadius: R.sm, paddingHorizontal: 8, paddingVertical: 3, alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 4 },
+  riskText: { fontSize: 10.5, fontWeight: "700", letterSpacing: 0.5 },
+  mono: { fontFamily: MONO, color: C.text, fontSize: 12.5 },
   sectionRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 11 },
   section: { color: C.textDim, fontSize: 13, fontWeight: "600", letterSpacing: 0.4 },
   card: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: R.lg, padding: 14 },

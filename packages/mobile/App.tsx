@@ -4,15 +4,15 @@
  * four tabs (Talk / Approvals / Activity / Projects). Implements Cato.dc.html.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as Speech from "expo-speech";
 import Constants from "expo-constants";
 import { useAudioRecorder, AudioModule, setAudioModeAsync } from "expo-audio";
 import { CatoClient, type ProjectStatus, type ApprovalRequest, type AgentQuestion, type ActivityEvent } from "./src/catoClient";
 import { readBase64, REC_OPTIONS } from "./src/audio";
-import { C, R, S, tint } from "./src/theme";
-import { Icon, Pill, Btn } from "./src/ui";
+import { C, tint } from "./src/theme";
+import { Icon, Pill, L } from "./src/ui";
 import {
   TalkScreen, ApprovalsScreen, ActivityScreen, ProjectsScreen, PairScreen, TabBar, ListeningOverlay, AppBar, type Tab,
 } from "./src/screens";
@@ -132,9 +132,9 @@ export default function App() {
       {recording && <ListeningOverlay transcript={transcript} />}
 
       {tab === "talk" && (
-        <View style={{ flex: 1 }}>
-          <View style={s.gearBar}>
-            <View style={{ flex: 1 }}><AppBar linked={connected} /></View>
+        <View style={L.fill}>
+          <View style={L.row}>
+            <View style={L.flex1}><AppBar linked={connected} /></View>
             <Pressable onPress={() => setSettingsOpen(true)} hitSlop={10} style={s.gear}><Icon name="gear" size={20} color={C.textMute} /></Pressable>
           </View>
           <TalkScreen
@@ -179,17 +179,17 @@ function SettingsSheet({
         <Text style={s.sheetTitle}>Settings</Text>
 
         <Text style={s.label}>LANGUAGE</Text>
-        <View style={{ flexDirection: "row", gap: 8, marginBottom: 6 }}>
+        <View style={s.langRow}>
           {langs.map(([k, lbl]) => (
-            <Pressable key={k} onPress={() => onLocale(k)} style={[s.tag, { flex: 1, alignItems: "center" }, locale === k && s.tagOn]}>
-              <Text style={[s.tagText, locale === k && { color: C.onAccent }]}>{lbl}</Text>
+            <Pressable key={k} onPress={() => onLocale(k)} style={[s.tag, s.tagFlex, locale === k && s.tagOn]}>
+              <Text style={[s.tagText, locale === k && s.tagTextOn]}>{lbl}</Text>
             </Pressable>
           ))}
         </View>
         <Text style={s.note}>Affects speech recognition, Cato's replies, and the spoken voice.</Text>
 
         <Text style={s.label}>QUICK CONTROLS</Text>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+        <View style={s.tagWrap}>
           {(["continue", "stop", "repeat", "summarize"] as const).map((a) => (
             <Pressable key={a} onPress={() => { onControl(a); onClose(); }} style={s.tag}><Text style={s.tagText}>{a}</Text></Pressable>
           ))}
@@ -197,20 +197,20 @@ function SettingsSheet({
 
         <Text style={s.label}>CONNECTION</Text>
         <View style={s.connRow}>
-          <View style={[s.connIcon, { backgroundColor: tint(C.accent, 0.12) }]}><Icon name="desktop" size={20} color={C.accent} /></View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ color: C.text, fontWeight: "600", fontSize: 14 }}>Desktop</Text>
-            <Text style={{ color: C.textDim, fontSize: 12 }} numberOfLines={1}>{url}</Text>
+          <View style={s.connIcon}><Icon name="desktop" size={20} color={C.accent} /></View>
+          <View style={s.connBody}>
+            <Text style={s.connTitle}>Desktop</Text>
+            <Text style={s.connUrl} numberOfLines={1}>{url}</Text>
           </View>
           <Pill color={connected ? C.active : C.attention}>{connected ? "Linked" : "Offline"}</Pill>
         </View>
 
         <View style={s.relayRow}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
-            <Text style={{ color: C.text, fontWeight: "600", fontSize: 14 }}>Cato Relay</Text>
-            <Pill bg={C.accent}><Text style={{ color: C.onAccent, fontWeight: "700", fontSize: 9 }}>PRO</Text></Pill>
+          <View style={s.relayTitleRow}>
+            <Text style={s.connTitle}>Cato Relay</Text>
+            <Pill bg={C.accent}><Text style={s.proText}>PRO</Text></Pill>
           </View>
-          <Text style={{ color: C.textDim, fontSize: 12 }}>From anywhere · push notifications</Text>
+          <Text style={s.connUrl}>From anywhere · push notifications</Text>
         </View>
       </View>
     </Modal>
@@ -219,7 +219,6 @@ function SettingsSheet({
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
-  gearBar: { flexDirection: "row", alignItems: "center" },
   gear: { paddingHorizontal: 18, paddingTop: 6 },
   backdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.55)" },
   sheet: { position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: "#121317", borderTopLeftRadius: 26, borderTopRightRadius: 26, borderWidth: 1, borderColor: C.borderStrong, padding: 22, paddingBottom: 34 },
@@ -227,10 +226,19 @@ const s = StyleSheet.create({
   sheetTitle: { color: C.text, fontSize: 22, fontWeight: "700", letterSpacing: -0.4 },
   label: { color: C.textDim, fontSize: 12, fontWeight: "600", letterSpacing: 0.4, marginTop: 20, marginBottom: 9 },
   note: { color: C.textMute, fontSize: 12, marginTop: 8, lineHeight: 17 },
+  langRow: { flexDirection: "row", gap: 8, marginBottom: 6 },
+  tagWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   tag: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 13, paddingVertical: 9 },
+  tagFlex: { flex: 1, alignItems: "center" },
   tagOn: { backgroundColor: C.accent, borderColor: C.accent },
   tagText: { color: "#c9cad1", fontWeight: "600", fontSize: 13 },
+  tagTextOn: { color: C.onAccent },
   connRow: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 14, padding: 13 },
-  connIcon: { width: 40, height: 40, borderRadius: 11, alignItems: "center", justifyContent: "center" },
+  connIcon: { width: 40, height: 40, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: tint(C.accent, 0.12) },
+  connBody: { flex: 1, minWidth: 0 },
+  connTitle: { color: C.text, fontWeight: "600", fontSize: 14 },
+  connUrl: { color: C.textDim, fontSize: 12 },
   relayRow: { backgroundColor: C.card, borderWidth: 1, borderColor: tint(C.accent, 0.22), borderRadius: 14, padding: 13, marginTop: 10, gap: 3 },
+  relayTitleRow: { flexDirection: "row", alignItems: "center", gap: 7 },
+  proText: { color: C.onAccent, fontWeight: "700", fontSize: 9 },
 });
