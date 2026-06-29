@@ -19,7 +19,8 @@
     "expo-speech": "~56.0.3",
     "expo-status-bar": "~56.0.4",
     "react": "19.2.3",
-    "react-native": "0.85.3"
+    "react-native": "0.85.3",
+    "react-native-zeroconf": "^0.14.0"
   },
   "devDependencies": {
     "@types/react": "~19.2.14",

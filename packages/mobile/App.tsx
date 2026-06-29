@@ -3,7 +3,7 @@
  * captures push-to-talk audio, plays spoken replies, and renders the live state across
  * four tabs (Talk / Approvals / Activity / Projects). Implements Cato.dc.html.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Modal, Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as Speech from "expo-speech";
@@ -18,6 +18,7 @@ import {
 } from "./src/screens";
 import { ApprovalDetailSheet, MultiChoiceSheet, StartAgentSheet } from "./src/sheets";
 import { loadMachines, saveMachines, upsert, type Machine } from "./src/machines";
+import { useDiscovery } from "./src/discovery";
 
 const extra = (Constants.expoConfig?.extra ?? {}) as { desktopWsUrl?: string; pairingToken?: string };
 const TTS: Record<string, string> = { en: "en-US", sk: "sk-SK", cs: "cs-CZ" };
@@ -145,6 +146,18 @@ export default function App() {
     setTab("projects");
   }, [locale]);
 
+  // Live mDNS discovery while on the Pair screen; merge with the saved list.
+  const discovered = useDiscovery(!connected);
+  const allMachines = useMemo(() => {
+    const map = new Map<string, Machine>();
+    for (const m of machines) map.set(m.address, m);
+    for (const d of discovered) {
+      const ex = map.get(d.address);
+      map.set(d.address, { ...ex, ...d, discovered: true, name: ex?.name ?? d.name });
+    }
+    return [...map.values()];
+  }, [machines, discovered]);
+
   const pendingCount = approvals.length;
   const hint = locale === "sk" ? "Podrž a hovor · alebo „Cato…“" : "Hold to talk · or “Cato…”";
 
@@ -152,7 +165,7 @@ export default function App() {
     return (
       <SafeAreaView style={s.root}>
         <StatusBar style="light" />
-        <PairScreen machines={machines} onConnect={connect} onAdd={addMachine} onRelay={onRelay} connectingTo={connectingTo} />
+        <PairScreen machines={allMachines} onConnect={connect} onAdd={addMachine} onRelay={onRelay} connectingTo={connectingTo} />
       </SafeAreaView>
     );
   }

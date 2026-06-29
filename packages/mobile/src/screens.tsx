@@ -397,7 +397,10 @@ export function PairScreen({
             <Pressable key={m.address} onPress={() => onConnect(m.address)} disabled={busy} style={st.machineRow}>
               <View style={[st.apIcon, st.machineIcon]}><Icon name={machineIconName(m)} size={20} color={C.accent} /></View>
               <View style={st.machineBody}>
-                <Text style={st.machineName} numberOfLines={1}>{m.name || "Cato desktop"}</Text>
+                <View style={st.machineNameRow}>
+                  <Text style={st.machineName} numberOfLines={1}>{m.name || "Cato desktop"}</Text>
+                  {m.discovered && <View style={st.foundTag}><Dot color={C.active} glow /><Text style={st.foundText}>Found</Text></View>}
+                </View>
                 <Text style={st.machineAddr} numberOfLines={1}>{m.platform ? `${platformLabel(m.platform)} · ` : ""}{m.address}</Text>
               </View>
               {busy ? <ActivityIndicator color={C.accent} /> : <Icon name="caret" size={20} color={C.textFaint} />}
@@ -568,7 +571,10 @@ const st = StyleSheet.create({
   machineRow: { flexDirection: "row", alignItems: "center", gap: 13, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 15, padding: 14, marginBottom: 10 },
   machineIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: tint(C.accent, 0.12) },
   machineBody: { flex: 1, minWidth: 0 },
-  machineName: { color: C.text, fontSize: 15, fontWeight: "600" },
+  machineNameRow: { flexDirection: "row", alignItems: "center", gap: 7 },
+  machineName: { color: C.text, fontSize: 15, fontWeight: "600", flexShrink: 1 },
+  foundTag: { flexDirection: "row", alignItems: "center", gap: 4 },
+  foundText: { color: C.active, fontSize: 11, fontWeight: "600" },
   machineAddr: { color: C.textDim, fontFamily: MONO, fontSize: 12, marginTop: 2 },
   addMachine: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 13, borderRadius: 13, borderWidth: 1, borderColor: tint(C.accent, 0.3), borderStyle: "dashed" },
   addMachineText: { color: C.accent, fontSize: 14, fontWeight: "600" },

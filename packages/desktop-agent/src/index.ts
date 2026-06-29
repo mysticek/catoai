@@ -17,6 +17,8 @@ import { WsServer } from "./ws/server.js";
 import { createStt, ensureWhisperServer } from "./voice/stt.js";
 import { createLlm } from "./voice/llm.js";
 import { sendLine, sendKey } from "./tmux/tmux.js";
+import { advertiseCato } from "./discovery/advertise.js";
+import { hostname } from "node:os";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -65,10 +67,14 @@ async function main(): Promise<void> {
   ws.setQuestionResolver((id, i) => void manager.answerQuestion(id, i));
   manager.start();
 
+  // Announce on the LAN so phones discover this machine automatically (no IP typing).
+  const stopAdvertise = advertiseCato(config.wsPort, hostname(), "0.0.0");
+
   console.log("[cato] desktop agent up. Cato remembers. Workers implement.");
 
   const shutdown = async () => {
     console.log("\n[cato] shutting down…");
+    stopAdvertise();
     recovery.stop();
     await manager.stop();
     await ws.stop();

@@ -10,12 +10,16 @@
       "supportsTablet": true,
       "bundleIdentifier": "dev.catoai.app",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Cato needs the microphone for voice commands."
+        "NSMicrophoneUsageDescription": "Cato needs the microphone for voice commands.",
+        "NSLocalNetworkUsageDescription": "Cato discovers your desktop agents on the local network.",
+        "NSBonjourServices": ["_cato._tcp"]
       }
     },
     "android": {
       "permissions": [
-        "RECORD_AUDIO"
+        "RECORD_AUDIO",
+        "android.permission.CHANGE_WIFI_MULTICAST_STATE",
+        "android.permission.INTERNET"
       ]
     },
     "extra": {

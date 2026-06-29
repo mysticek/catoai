@@ -10,6 +10,7 @@ export interface Machine {
   name?: string; // hostname, learned on connect
   platform?: string; // darwin | linux | win32
   lastSeen?: number;
+  discovered?: boolean; // found live on the network via mDNS (not from saved list)
 }
 
 const FILE = FileSystem.documentDirectory + "cato-machines.json";
