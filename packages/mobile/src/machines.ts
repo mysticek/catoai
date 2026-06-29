@@ -42,6 +42,13 @@ export function upsert(list: Machine[], m: Machine): Machine[] {
   return next;
 }
 
+/** Display name for a machine: its network/host name, else the host from its address. */
+export function machineLabel(m: Machine): string {
+  if (m.name) return m.name.replace(/\.local\.?$/i, "");
+  const host = m.address.replace(/^wss?:\/\//i, "").split(/[:/]/)[0];
+  return host || "Cato desktop";
+}
+
 /** Nice label for the platform an agent reports. */
 export function platformLabel(platform?: string): string {
   if (platform === "darwin") return "macOS";

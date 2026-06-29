@@ -6,8 +6,8 @@
 
 import { WebSocketServer, type WebSocket } from "ws";
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
-import { hostname } from "node:os";
 import { ulid } from "ulid";
+import { friendlyHost } from "../util/host.js";
 import { writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, basename } from "node:path";
@@ -211,7 +211,7 @@ export class WsServer {
             socket,
             frame(
               "welcome",
-              { sessionId: ulid(), serverVersion: SERVER_VERSION, projects: [], host: hostname(), platform: process.platform },
+              { sessionId: ulid(), serverVersion: SERVER_VERSION, projects: [], host: friendlyHost(), platform: process.platform },
               msg.id,
             ),
           );

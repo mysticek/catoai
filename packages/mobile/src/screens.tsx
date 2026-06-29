@@ -7,7 +7,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View, ActivityIndicator, TextI
 import { C, R, S, tint, MONO, STATUS, StatusKey } from "./theme";
 import { Icon, Dot, StatusDot, Pill, RiskBadge, SectionLabel, Card, Btn, IconChip, L } from "./ui";
 import type { ProjectStatus, ApprovalRequest, ActivityEvent } from "./catoClient";
-import { type Machine, platformLabel } from "./machines";
+import { type Machine, platformLabel, machineLabel } from "./machines";
 
 export type Tab = "talk" | "approvals" | "activity" | "projects";
 
@@ -398,7 +398,7 @@ export function PairScreen({
               <View style={[st.apIcon, st.machineIcon]}><Icon name={machineIconName(m)} size={20} color={C.accent} /></View>
               <View style={st.machineBody}>
                 <View style={st.machineNameRow}>
-                  <Text style={st.machineName} numberOfLines={1}>{m.name || "Cato desktop"}</Text>
+                  <Text style={st.machineName} numberOfLines={1}>{machineLabel(m)}</Text>
                   {m.discovered && <View style={st.foundTag}><Dot color={C.active} glow /><Text style={st.foundText}>Found</Text></View>}
                 </View>
                 <Text style={st.machineAddr} numberOfLines={1}>{m.platform ? `${platformLabel(m.platform)} · ` : ""}{m.address}</Text>
