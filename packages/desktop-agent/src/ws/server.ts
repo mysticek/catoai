@@ -96,8 +96,16 @@ export class WsServer {
     this.bus.onAny((event) => this.#pushEvent(event));
   }
 
-  /** PreToolUse hook endpoint: an agent asks "may I run this tool?" → ask the human. */
+  /** HTTP endpoints: GET /info (machine identity for the pairing list) + the PreToolUse
+   *  hook (an agent asks "may I run this tool?" → ask the human). */
   #onHttp(req: IncomingMessage, res: ServerResponse): void {
+    // Clean UTF-8 machine name over HTTP — reliable where mDNS TXT mojibakes it.
+    if (req.method === "GET" && (req.url === "/info" || req.url === "/v1/info")) {
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8" }).end(
+        JSON.stringify({ host: friendlyHost(), platform: process.platform, version: SERVER_VERSION }),
+      );
+      return;
+    }
     if (req.method !== "POST" || req.url !== "/hooks/pretooluse") {
       res.writeHead(404).end();
       return;

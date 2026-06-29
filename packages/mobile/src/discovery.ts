@@ -10,10 +10,27 @@ import type { Machine } from "./machines";
 
 interface ZcService {
   name?: string;
+  fullName?: string;
   host?: string;
   port?: number;
   addresses?: string[];
   txt?: { host?: string; path?: string; v?: string };
+}
+
+/** Best human name from a resolved service, trying every field the libs expose.
+ *  Returns undefined if nothing usable (caller falls back to the address). */
+function serviceName(s: ZcService): string | undefined {
+  const candidates = [
+    s.txt?.host,
+    (s.name ?? "").replace(/^Cato\s*[-·]\s*/i, ""), // our instance name "Cato - <host>"
+    (s.fullName ?? "").split("._cato.")[0].replace(/^Cato\s*[-·]\s*/i, ""),
+    (s.host ?? "").replace(/\.local\.?$/i, ""),
+  ];
+  for (const c of candidates) {
+    const v = c?.trim();
+    if (v && !/^\d+\.\d+\.\d+\.\d+$/.test(v)) return v; // skip if it's just an IP
+  }
+  return undefined;
 }
 
 /** Returns Cato machines currently discoverable on the network (live while `active`). */
@@ -34,7 +51,7 @@ export function useDiscovery(active: boolean): Machine[] {
       if (!ip || !s.port) return;
       const path = s.txt?.path ?? "/v1";
       const address = `ws://${ip}:${s.port}${path}`;
-      const name = s.txt?.host ?? s.name ?? s.host;
+      const name = serviceName(s);
       setFound((prev) => (prev.some((m) => m.address === address) ? prev : [...prev, { address, name, discovered: true }]));
     };
 

@@ -17,7 +17,7 @@ import {
   TalkScreen, ApprovalsScreen, ActivityScreen, ProjectsScreen, PairScreen, TabBar, ListeningOverlay, AppBar, type Tab,
 } from "./src/screens";
 import { ApprovalDetailSheet, MultiChoiceSheet, StartAgentSheet } from "./src/sheets";
-import { loadMachines, saveMachines, upsert, type Machine } from "./src/machines";
+import { loadMachines, saveMachines, upsert, fetchMachineInfo, type Machine } from "./src/machines";
 import { useDiscovery } from "./src/discovery";
 
 const extra = (Constants.expoConfig?.extra ?? {}) as { desktopWsUrl?: string; pairingToken?: string };
@@ -46,6 +46,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const client = useRef<CatoClient | null>(null);
+  const enriched = useRef<Set<string>>(new Set());
   const recorder = useAudioRecorder(REC_OPTIONS);
 
   const connect = useCallback((address: string) => {
@@ -157,6 +158,23 @@ export default function App() {
     }
     return [...map.values()];
   }, [machines, discovered]);
+
+  // Fill in each machine's clean name via HTTP /info (reliable UTF-8, unlike mDNS TXT).
+  useEffect(() => {
+    if (connected) return;
+    for (const m of allMachines) {
+      if (m.name || enriched.current.has(m.address)) continue;
+      enriched.current.add(m.address);
+      fetchMachineInfo(m.address).then((info) => {
+        if (!info?.host) return;
+        setMachines((prev) => {
+          const next = upsert(prev, { address: m.address, name: info.host, platform: info.platform });
+          void saveMachines(next);
+          return next;
+        });
+      });
+    }
+  }, [allMachines, connected]);
 
   const pendingCount = approvals.length;
   const hint = locale === "sk" ? "Podrž a hovor · alebo „Cato…“" : "Hold to talk · or “Cato…”";

@@ -42,6 +42,21 @@ export function upsert(list: Machine[], m: Machine): Machine[] {
   return next;
 }
 
+/** Fetch a machine's clean UTF-8 identity over HTTP (reliable, unlike mDNS TXT). */
+export async function fetchMachineInfo(address: string): Promise<{ host?: string; platform?: string } | null> {
+  const base = address.replace(/^ws(s?):\/\//i, "http$1://").replace(/\/v1\/?$/i, "");
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 2500);
+    const res = await fetch(`${base}/info`, { signal: ctrl.signal });
+    clearTimeout(t);
+    if (!res.ok) return null;
+    return (await res.json()) as { host?: string; platform?: string };
+  } catch {
+    return null;
+  }
+}
+
 /** Display name for a machine: its network/host name, else the host from its address. */
 export function machineLabel(m: Machine): string {
   if (m.name) return m.name.replace(/\.local\.?$/i, "");
