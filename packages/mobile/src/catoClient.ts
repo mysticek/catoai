@@ -6,9 +6,11 @@
 
 const PROTOCOL_VERSION = 1 as const;
 
+export type ProjectState = "idle" | "active" | "waiting" | "attention";
+
 export interface ProjectStatus {
   name: string;
-  state: "idle" | "active" | "waiting" | "attention";
+  state: ProjectState;
   summary: string;
 }
 
@@ -20,14 +22,39 @@ export interface ApprovalRequest {
   risk: "low" | "medium" | "high";
   stats: string;
   detail: string;
+  /** LLM-parsed plain-language explanation (arrives via approval.update). */
+  summary?: string;
+  /** LLM-suggested quick replies (arrives via approval.update). */
+  suggestions?: string[];
 }
 
+/** A conversational choice an agent is waiting on (not a tool gate). */
+export interface AgentQuestion {
+  id: string;
+  project?: string;
+  question: string;
+  options: string[];
+}
+
+export interface ActivityEvent {
+  type: string;
+  project?: string;
+  summary: string;
+  importance: number;
+  ts: string;
+}
+
+export type Target = { project?: string };
+
 export interface CatoClientHandlers {
-  onWelcome?: () => void;
-  onTranscript?: (text: string) => void;
+  onWelcome?: (projects: ProjectStatus[]) => void;
+  onTranscript?: (text: string, final: boolean) => void;
   onSpeak?: (text: string, locale: string) => void;
   onStatus?: (projects: ProjectStatus[]) => void;
   onApproval?: (approval: ApprovalRequest) => void;
+  onApprovalUpdate?: (id: string, summary?: string, suggestions?: string[]) => void;
+  onQuestion?: (question: AgentQuestion) => void;
+  onActivity?: (event: ActivityEvent) => void;
   onError?: (code: string, message: string) => void;
   onClose?: () => void;
 }
@@ -58,23 +85,38 @@ export class CatoClient {
     this.#ws = undefined;
   }
 
+  get connected(): boolean {
+    return this.#ws?.readyState === 1;
+  }
+
   /** Send a spoken command — either recorded audio (base64 WAV) or typed text. */
-  sendVoice(input: { audioBase64?: string; text?: string; locale?: string }): void {
+  sendVoice(input: { audioBase64?: string; text?: string; locale?: string; target?: Target }): void {
     this.#send("voice.command", {
       audio: input.audioBase64,
       text: input.text,
-      locale: input.locale ?? "sk",
+      locale: input.locale ?? "en",
+      target: input.target,
     });
   }
 
   /** Explicit control button. */
-  sendControl(action: "continue" | "stop" | "repeat" | "summarize"): void {
-    this.#send("control.action", { action });
+  sendControl(action: "continue" | "stop" | "repeat" | "summarize", locale = "en", target?: Target): void {
+    this.#send("control.action", { action, locale, target });
   }
 
-  /** Answer a pending tool-call approval. */
-  resolveApproval(approvalId: string, decision: "allow" | "deny", reason?: string): void {
-    this.#send("approval.resolve", { id: approvalId, decision, reason });
+  /** Answer a pending tool-call approval. scope: once | command | session. */
+  resolveApproval(
+    approvalId: string,
+    decision: "allow" | "deny",
+    reason?: string,
+    scope: "once" | "command" | "session" = "once",
+  ): void {
+    this.#send("approval.resolve", { id: approvalId, decision, reason, scope });
+  }
+
+  /** Answer a conversational multi-choice question. */
+  answerQuestion(questionId: string, optionIndex: number): void {
+    this.#send("question.answer", { id: questionId, optionIndex });
   }
 
   #send(type: string, payload: unknown): void {
@@ -93,15 +135,27 @@ export class CatoClient {
     const p = msg.payload ?? {};
     switch (msg.type) {
       case "welcome":
-        return this.handlers.onWelcome?.();
+        return this.handlers.onWelcome?.((p.projects as ProjectStatus[]) ?? []);
+      case "transcript.partial":
+        return this.handlers.onTranscript?.(String(p.text ?? ""), false);
       case "transcript.final":
-        return this.handlers.onTranscript?.(String(p.text ?? ""));
+        return this.handlers.onTranscript?.(String(p.text ?? ""), true);
       case "speech.say":
-        return this.handlers.onSpeak?.(String(p.text ?? ""), String(p.locale ?? "sk"));
+        return this.handlers.onSpeak?.(String(p.text ?? ""), String(p.locale ?? "en"));
       case "status.update":
         return this.handlers.onStatus?.((p.projects as ProjectStatus[]) ?? []);
       case "approval.request":
         return this.handlers.onApproval?.(p.approval as ApprovalRequest);
+      case "approval.update":
+        return this.handlers.onApprovalUpdate?.(
+          String(p.id ?? ""),
+          p.summary as string | undefined,
+          p.suggestions as string[] | undefined,
+        );
+      case "agent.question":
+        return this.handlers.onQuestion?.(p.question as AgentQuestion);
+      case "event.push":
+        return this.handlers.onActivity?.((p.event as ActivityEvent) ?? ({} as ActivityEvent));
       case "error":
         return this.handlers.onError?.(String(p.code ?? "error"), String(p.message ?? ""));
     }

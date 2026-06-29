@@ -1,86 +1,84 @@
 /**
- * Cato — mobile voice terminal. The whole brain lives on the desktop agent; this
- * screen only: connects, captures push-to-talk audio, plays spoken replies (TTS),
- * and shows a minimal status/log. See docs/PROJECT.md (mobile = voice terminal only).
+ * Cato — mobile command center. The brain lives on the desktop agent; this app connects,
+ * captures push-to-talk audio, plays spoken replies, and renders the live state across
+ * four tabs (Talk / Approvals / Activity / Projects). Implements Cato.dc.html.
  */
-
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as Speech from "expo-speech";
 import Constants from "expo-constants";
-import { CatoClient, type ProjectStatus, type ApprovalRequest } from "./src/catoClient";
 import { useAudioRecorder, AudioModule, setAudioModeAsync } from "expo-audio";
+import { CatoClient, type ProjectStatus, type ApprovalRequest, type AgentQuestion, type ActivityEvent } from "./src/catoClient";
 import { readBase64, REC_OPTIONS } from "./src/audio";
+import { C, R, S, tint } from "./src/theme";
+import { Icon, Pill, Btn } from "./src/ui";
+import {
+  TalkScreen, ApprovalsScreen, ActivityScreen, ProjectsScreen, PairScreen, TabBar, ListeningOverlay, AppBar, type Tab,
+} from "./src/screens";
+import { ApprovalDetailSheet, MultiChoiceSheet, StartAgentSheet } from "./src/sheets";
 
 const extra = (Constants.expoConfig?.extra ?? {}) as { desktopWsUrl?: string; pairingToken?: string };
-
-const STATE_COLOR: Record<ProjectStatus["state"], string> = {
-  idle: "#6b7280",
-  active: "#22c55e",
-  waiting: "#eab308",
-  attention: "#ef4444",
-};
+const TTS: Record<string, string> = { en: "en-US", sk: "sk-SK", cs: "cs-CZ" };
 
 export default function App() {
   const [wsUrl, setWsUrl] = useState(extra.desktopWsUrl ?? "ws://192.168.68.102:8787/v1");
+  const [locale, setLocale] = useState("en");
   const [connected, setConnected] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [recording, setRecording] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+
+  const [tab, setTab] = useState<Tab>("talk");
   const [projects, setProjects] = useState<ProjectStatus[]>([]);
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [log, setLog] = useState<string[]>([]);
-  const [draft, setDraft] = useState("");
+  const [activity, setActivity] = useState<ActivityEvent[]>([]);
+  const [question, setQuestion] = useState<AgentQuestion | null>(null);
+  const [exchange, setExchange] = useState<{ user?: string; cato?: string }>({});
+
+  const [recording, setRecording] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [transcript, setTranscript] = useState("");
+
+  const [detail, setDetail] = useState<ApprovalRequest | null>(null);
+  const [startOpen, setStartOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const client = useRef<CatoClient | null>(null);
   const recorder = useAudioRecorder(REC_OPTIONS);
 
-  const append = useCallback((line: string) => setLog((l) => [...l.slice(-40), line]), []);
-
   const connect = useCallback(() => {
     client.current?.close();
+    setConnecting(true);
     const c = new CatoClient(wsUrl, extra.pairingToken ?? "changeme", {
-      onWelcome: () => { setConnected(true); append("• connected"); },
-      onTranscript: (t) => append(`🎙️  ${t}`),
-      onSpeak: (text, locale) => {
-        append(`🔊 ${text}`);
-        setBusy(false);
-        Speech.speak(text, { language: locale === "sk" ? "sk-SK" : locale });
-      },
+      onWelcome: (ps) => { setConnected(true); setConnecting(false); setProjects(ps); },
       onStatus: setProjects,
+      onTranscript: (t, final) => { setTranscript(t); if (final) setExchange((e) => ({ ...e, user: t })); },
+      onSpeak: (text, loc) => { setBusy(false); setExchange((e) => ({ ...e, cato: text })); Speech.speak(text, { language: TTS[loc] ?? loc }); },
       onApproval: (a) => setApprovals((prev) => [a, ...prev.filter((x) => x.id !== a.id)]),
-      onError: (code, msg) => { append(`❌ ${code}: ${msg}`); setBusy(false); },
-      onClose: () => setConnected(false),
+      onApprovalUpdate: (id, summary, suggestions) =>
+        setApprovals((prev) => prev.map((a) => (a.id === id ? { ...a, summary: summary ?? a.summary, suggestions: suggestions ?? a.suggestions } : a))),
+      onQuestion: (q) => setQuestion(q),
+      onActivity: (e) => setActivity((prev) => [e, ...prev].slice(0, 60)),
+      onError: () => setBusy(false),
+      onClose: () => { setConnected(false); setConnecting(false); },
     });
     c.connect();
     client.current = c;
-  }, [wsUrl, append]);
+  }, [wsUrl]);
 
-  useEffect(() => () => client.current?.close(), []);
+  // Auto-connect on mount; clean up on unmount.
+  useEffect(() => { connect(); return () => client.current?.close(); }, [connect]);
 
   const onPressIn = useCallback(async () => {
     try {
       const perm = await AudioModule.requestRecordingPermissionsAsync();
-      if (!perm.granted) { append("❌ mic permission denied"); return; }
+      if (!perm.granted) return;
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
       await recorder.prepareToRecordAsync();
       recorder.record();
+      setTranscript("");
       setRecording(true);
-    } catch (e) {
-      setRecording(false);
-      append("❌ record failed: " + (e as Error).message);
-    }
-  }, [append, recorder]);
+    } catch { setRecording(false); }
+  }, [recorder]);
 
   const onPressOut = useCallback(async () => {
     setRecording(false);
@@ -88,172 +86,151 @@ export default function App() {
     try {
       await recorder.stop();
       const uri = recorder.uri;
-      if (!uri) { setBusy(false); append("❌ no audio captured"); return; }
+      if (!uri) { setBusy(false); return; }
       const audioBase64 = await readBase64(uri);
-      client.current?.sendVoice({ audioBase64, locale: "sk" });
-    } catch (e) {
-      setBusy(false);
-      append("❌ stop failed: " + (e as Error).message);
-    }
-  }, [append, recorder]);
+      client.current?.sendVoice({ audioBase64, locale });
+    } catch { setBusy(false); }
+  }, [recorder, locale]);
 
-  const sendText = useCallback(() => {
-    if (!draft.trim()) return;
+  const resolveApproval = useCallback((id: string, decision: "allow" | "deny", reason?: string, scope: "once" | "session" | "command" = "once") => {
+    client.current?.resolveApproval(id, decision, reason, scope);
+    setApprovals((prev) => prev.filter((a) => a.id !== id));
+  }, []);
+
+  const answerQuestion = useCallback((id: string, index: number) => {
+    client.current?.answerQuestion(id, index);
+    setQuestion(null);
+  }, []);
+
+  const openProject = useCallback((name: string) => {
+    client.current?.sendVoice({ text: `how is ${name} doing`, locale });
     setBusy(true);
-    client.current?.sendVoice({ text: draft.trim(), locale: "sk" });
-    setDraft("");
-  }, [draft]);
+    setTab("talk");
+  }, [locale]);
 
-  const resolveApproval = useCallback((approvalId: string, decision: "allow" | "deny") => {
-    client.current?.resolveApproval(approvalId, decision);
-    setApprovals((prev) => prev.filter((a) => a.id !== approvalId));
-    append(decision === "allow" ? "✅ approved" : "⛔ denied");
-  }, [append]);
+  const startAgent = useCallback((project: string, agent: string, task: string) => {
+    client.current?.sendVoice({ text: `start ${agent === "codex" ? "codex" : "claude"} on project ${project}`, locale });
+    if (task) setTimeout(() => client.current?.sendVoice({ text: `tell ${project} ${task}`, locale }), 800);
+    setTab("projects");
+  }, [locale]);
+
+  const pendingCount = approvals.length;
+  const hint = locale === "sk" ? "Podrž a hovor · alebo „Cato…“" : "Hold to talk · or “Cato…”";
+
+  if (!connected) {
+    return (
+      <SafeAreaView style={s.root}>
+        <StatusBar style="light" />
+        <PairScreen url={wsUrl} onChangeUrl={setWsUrl} onConnect={connect} connecting={connecting} />
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={s.root}>
       <StatusBar style="light" />
-      <Text style={styles.title}>Cato</Text>
+      {recording && <ListeningOverlay transcript={transcript} />}
 
-      {!connected ? (
-        <View style={styles.connectRow}>
-          <TextInput style={styles.input} value={wsUrl} onChangeText={setWsUrl} autoCapitalize="none" />
-          <Pressable style={styles.btn} onPress={connect}><Text style={styles.btnText}>Connect</Text></Pressable>
+      {tab === "talk" && (
+        <View style={{ flex: 1 }}>
+          <View style={s.gearBar}>
+            <View style={{ flex: 1 }}><AppBar linked={connected} /></View>
+            <Pressable onPress={() => setSettingsOpen(true)} hitSlop={10} style={s.gear}><Icon name="gear" size={20} color={C.textMute} /></Pressable>
+          </View>
+          <TalkScreen
+            projects={projects} exchange={exchange} recording={recording} busy={busy} hint={hint}
+            onPressIn={onPressIn} onPressOut={onPressOut} onOpenProject={openProject}
+            onGoApprovals={() => setTab("approvals")} approvals={pendingCount}
+          />
         </View>
-      ) : (
-        <>
-          {approvals.map((a) => {
-            const lineCount = a.detail ? a.detail.split("\n").length : 0;
-            const short = !!a.detail && lineCount <= 8 && a.detail.length <= 500;
-            const open = short || expanded.has(a.id); // short → always open
-            const riskStyle = a.risk === "high" ? styles.riskHigh : a.risk === "medium" ? styles.riskMed : styles.riskLow;
-            return (
-              <View key={a.id} style={styles.approvalCard}>
-                <View style={styles.approvalHead}>
-                  <Text style={styles.approvalTitle} numberOfLines={1}>
-                    {a.project ? a.project + " · " : ""}{a.title}
-                  </Text>
-                  <View style={[styles.riskPill, riskStyle]}><Text style={styles.riskText}>{a.risk}</Text></View>
-                </View>
-                {a.stats ? <Text style={styles.statsText}>{a.stats}</Text> : null}
-                {/* Toggle only for LONG content, kept in the top cluster (away from buttons). */}
-                {a.detail && !short ? (
-                  <Pressable hitSlop={6} onPress={() => setExpanded((s) => {
-                    const n = new Set(s); n.has(a.id) ? n.delete(a.id) : n.add(a.id); return n;
-                  })}>
-                    <Text style={styles.expandBtn}>{expanded.has(a.id) ? "▾ skryť celý diff" : `▸ zobraziť celý diff (${lineCount} riadkov)`}</Text>
-                  </Pressable>
-                ) : null}
-                {open && a.detail ? (
-                  <ScrollView style={styles.diffBox}>
-                    {a.detail.split("\n").map((l, i) => (
-                      <Text key={i} style={[styles.diffLine, l.startsWith("+") ? styles.diffAdd : l.startsWith("-") ? styles.diffDel : undefined]}>
-                        {l || " "}
-                      </Text>
-                    ))}
-                  </ScrollView>
-                ) : null}
-                <View style={styles.approvalBtns}>
-                  <Pressable style={[styles.apBtn, styles.deny]} onPress={() => resolveApproval(a.id, "deny")}>
-                    <Text style={styles.apBtnText}>Deny</Text>
-                  </Pressable>
-                  <Pressable style={[styles.apBtn, styles.allow]} onPress={() => resolveApproval(a.id, "allow")}>
-                    <Text style={styles.apBtnText}>Approve</Text>
-                  </Pressable>
-                </View>
-              </View>
-            );
-          })}
-
-          <ScrollView style={styles.statusBox} contentContainerStyle={{ gap: 6 }}>
-            {projects.length === 0 && <Text style={styles.dim}>Zatiaľ sa nič nedeje.</Text>}
-            {projects.map((p) => (
-              <View key={p.name} style={styles.statusRow}>
-                <View style={[styles.dot, { backgroundColor: STATE_COLOR[p.state] }]} />
-                <Text style={styles.project}>{p.name}</Text>
-                <Text style={styles.summary} numberOfLines={1}>{p.summary}</Text>
-              </View>
-            ))}
-          </ScrollView>
-
-          <ScrollView style={styles.logBox}>
-            {log.map((l, i) => <Text key={i} style={styles.logLine}>{l}</Text>)}
-          </ScrollView>
-
-          <View style={styles.controls}>
-            {(["continue", "stop", "repeat", "summarize"] as const).map((a) => (
-              <Pressable key={a} style={styles.chip} onPress={() => client.current?.sendControl(a)}>
-                <Text style={styles.chipText}>{a}</Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <Pressable
-            style={[styles.talk, recording && styles.talkActive]}
-            onPressIn={onPressIn}
-            onPressOut={onPressOut}
-          >
-            {busy && !recording
-              ? <ActivityIndicator color="#fff" />
-              : <Text style={styles.talkText}>{recording ? "● Počúvam…" : "Podrž a hovor"}</Text>}
-          </Pressable>
-
-          <View style={styles.connectRow}>
-            <TextInput
-              style={styles.input}
-              value={draft}
-              onChangeText={setDraft}
-              placeholder="alebo napíš príkaz…"
-              placeholderTextColor="#6b7280"
-              onSubmitEditing={sendText}
-            />
-            <Pressable style={styles.btn} onPress={sendText}><Text style={styles.btnText}>Send</Text></Pressable>
-          </View>
-        </>
       )}
+      {tab === "approvals" && <ApprovalsScreen approvals={approvals} onResolve={(id, d) => resolveApproval(id, d)} onOpen={setDetail} />}
+      {tab === "activity" && <ActivityScreen events={activity} />}
+      {tab === "projects" && <ProjectsScreen projects={projects} onOpen={openProject} onStart={() => setStartOpen(true)} />}
+
+      <TabBar active={tab} onTab={setTab} approvals={pendingCount} />
+
+      <ApprovalDetailSheet approval={detail} onClose={() => setDetail(null)} onResolve={resolveApproval} />
+      <MultiChoiceSheet question={question} onClose={() => setQuestion(null)} onAnswer={answerQuestion} />
+      {startOpen && <StartAgentSheet projects={projects} onClose={() => setStartOpen(false)} onStart={startAgent} />}
+
+      <SettingsSheet
+        open={settingsOpen} onClose={() => setSettingsOpen(false)}
+        locale={locale} onLocale={setLocale} url={wsUrl} connected={connected}
+        onControl={(a) => client.current?.sendControl(a, locale)}
+      />
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#0b0f14", paddingTop: 8, paddingBottom: 8, paddingHorizontal: 16, gap: 12 },
-  title: { color: "#e5e7eb", fontSize: 28, fontWeight: "700" },
-  connectRow: { flexDirection: "row", gap: 8 },
-  input: { flex: 1, backgroundColor: "#111827", color: "#e5e7eb", borderRadius: 10, paddingHorizontal: 12, height: 44 },
-  btn: { backgroundColor: "#2563eb", borderRadius: 10, paddingHorizontal: 16, justifyContent: "center" },
-  btnText: { color: "#fff", fontWeight: "600" },
-  approvalCard: { backgroundColor: "#15110a", borderColor: "#a16207", borderWidth: 1, borderRadius: 12, padding: 12, gap: 6 },
-  approvalHead: { flexDirection: "row", alignItems: "center", gap: 8 },
-  approvalTitle: { color: "#fde68a", fontWeight: "700", flex: 1 },
-  riskPill: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
-  riskText: { color: "#fff", fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
-  riskLow: { backgroundColor: "#16a34a" },
-  riskMed: { backgroundColor: "#d97706" },
-  riskHigh: { backgroundColor: "#dc2626" },
-  statsText: { color: "#9ca3af", fontSize: 12 },
-  expandBtn: { color: "#93c5fd", fontSize: 13, paddingVertical: 4 },
-  diffBox: { maxHeight: 220, backgroundColor: "#0b0f14", borderRadius: 8, padding: 8 },
-  diffLine: { color: "#cbd5e1", fontFamily: "Menlo", fontSize: 11 },
-  diffAdd: { color: "#4ade80" },
-  diffDel: { color: "#f87171" },
-  // Clear separation so the action buttons can't be hit by mistake.
-  approvalBtns: { flexDirection: "row", gap: 12, marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: "#3f2d12" },
-  apBtn: { flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: "center" },
-  allow: { backgroundColor: "#16a34a" },
-  deny: { backgroundColor: "#dc2626" },
-  apBtnText: { color: "#fff", fontWeight: "700" },
-  statusBox: { maxHeight: 160, backgroundColor: "#0f1620", borderRadius: 12, padding: 12 },
-  statusRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  project: { color: "#e5e7eb", fontWeight: "600", width: 90 },
-  summary: { color: "#9ca3af", flex: 1 },
-  dim: { color: "#6b7280" },
-  logBox: { flex: 1, backgroundColor: "#0f1620", borderRadius: 12, padding: 12 },
-  logLine: { color: "#cbd5e1", fontSize: 13, marginBottom: 4 },
-  controls: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
-  chip: { backgroundColor: "#1f2937", borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
-  chipText: { color: "#e5e7eb" },
-  talk: { backgroundColor: "#2563eb", borderRadius: 16, height: 72, alignItems: "center", justifyContent: "center" },
-  talkActive: { backgroundColor: "#ef4444" },
-  talkText: { color: "#fff", fontSize: 18, fontWeight: "700" },
+function SettingsSheet({
+  open, onClose, locale, onLocale, url, connected, onControl,
+}: {
+  open: boolean; onClose: () => void; locale: string; onLocale: (l: string) => void;
+  url: string; connected: boolean; onControl: (a: "continue" | "stop" | "repeat" | "summarize") => void;
+}) {
+  if (!open) return null;
+  const langs: [string, string][] = [["en", "English"], ["sk", "Slovenčina"], ["cs", "Čeština"]];
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <Pressable style={s.backdrop} onPress={onClose} />
+      <View style={s.sheet}>
+        <View style={s.grabber} />
+        <Text style={s.sheetTitle}>Settings</Text>
+
+        <Text style={s.label}>LANGUAGE</Text>
+        <View style={{ flexDirection: "row", gap: 8, marginBottom: 6 }}>
+          {langs.map(([k, lbl]) => (
+            <Pressable key={k} onPress={() => onLocale(k)} style={[s.tag, { flex: 1, alignItems: "center" }, locale === k && s.tagOn]}>
+              <Text style={[s.tagText, locale === k && { color: C.onAccent }]}>{lbl}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={s.note}>Affects speech recognition, Cato's replies, and the spoken voice.</Text>
+
+        <Text style={s.label}>QUICK CONTROLS</Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          {(["continue", "stop", "repeat", "summarize"] as const).map((a) => (
+            <Pressable key={a} onPress={() => { onControl(a); onClose(); }} style={s.tag}><Text style={s.tagText}>{a}</Text></Pressable>
+          ))}
+        </View>
+
+        <Text style={s.label}>CONNECTION</Text>
+        <View style={s.connRow}>
+          <View style={[s.connIcon, { backgroundColor: tint(C.accent, 0.12) }]}><Icon name="desktop" size={20} color={C.accent} /></View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ color: C.text, fontWeight: "600", fontSize: 14 }}>Desktop</Text>
+            <Text style={{ color: C.textDim, fontSize: 12 }} numberOfLines={1}>{url}</Text>
+          </View>
+          <Pill color={connected ? C.active : C.attention}>{connected ? "Linked" : "Offline"}</Pill>
+        </View>
+
+        <View style={s.relayRow}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+            <Text style={{ color: C.text, fontWeight: "600", fontSize: 14 }}>Cato Relay</Text>
+            <Pill bg={C.accent}><Text style={{ color: C.onAccent, fontWeight: "700", fontSize: 9 }}>PRO</Text></Pill>
+          </View>
+          <Text style={{ color: C.textDim, fontSize: 12 }}>From anywhere · push notifications</Text>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const s = StyleSheet.create({
+  root: { flex: 1, backgroundColor: C.bg },
+  gearBar: { flexDirection: "row", alignItems: "center" },
+  gear: { paddingHorizontal: 18, paddingTop: 6 },
+  backdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.55)" },
+  sheet: { position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: "#121317", borderTopLeftRadius: 26, borderTopRightRadius: 26, borderWidth: 1, borderColor: C.borderStrong, padding: 22, paddingBottom: 34 },
+  grabber: { alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.18)", marginBottom: 16 },
+  sheetTitle: { color: C.text, fontSize: 22, fontWeight: "700", letterSpacing: -0.4 },
+  label: { color: C.textDim, fontSize: 12, fontWeight: "600", letterSpacing: 0.4, marginTop: 20, marginBottom: 9 },
+  note: { color: C.textMute, fontSize: 12, marginTop: 8, lineHeight: 17 },
+  tag: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 13, paddingVertical: 9 },
+  tagOn: { backgroundColor: C.accent, borderColor: C.accent },
+  tagText: { color: "#c9cad1", fontWeight: "600", fontSize: 13 },
+  connRow: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 14, padding: 13 },
+  connIcon: { width: 40, height: 40, borderRadius: 11, alignItems: "center", justifyContent: "center" },
+  relayRow: { backgroundColor: C.card, borderWidth: 1, borderColor: tint(C.accent, 0.22), borderRadius: 14, padding: 13, marginTop: 10, gap: 3 },
 });
