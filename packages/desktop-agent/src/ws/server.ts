@@ -5,13 +5,15 @@
  */
 
 import { WebSocketServer, type WebSocket } from "ws";
+import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { ulid } from "ulid";
 import { writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, basename } from "node:path";
 import {
   PROTOCOL_VERSION,
   type CatoEvent,
+  type ApprovalRequest,
   type ClientMessage,
   type ServerMessage,
 } from "@cato/shared";
@@ -19,6 +21,8 @@ import type { Config } from "../config.js";
 import type { EventBus } from "../bus/event-bus.js";
 import type { Orchestrator } from "../orchestrator/orchestrator.js";
 import type { Stt } from "../voice/stt.js";
+import { toWav16kMono } from "../voice/convert.js";
+import { ApprovalManager, summarizeToolCall } from "../approvals/manager.js";
 
 const SERVER_VERSION = "0.0.0";
 const DEFAULT_LOCALE = "sk";
@@ -27,7 +31,10 @@ const PUSH_THRESHOLD = 0.6;
 
 export class WsServer {
   #wss: WebSocketServer | undefined;
+  #http: Server | undefined;
   #authed = new Set<WebSocket>();
+  // Tool-call approvals (from agents' PreToolUse gates) awaiting a human decision.
+  readonly #approvals = new ApprovalManager((a) => this.#broadcastApproval(a));
 
   constructor(
     private readonly config: Config,
@@ -36,34 +43,90 @@ export class WsServer {
     private readonly stt?: Stt,
   ) {}
 
-  /** Run local STT on base64 audio (16 kHz mono WAV) → text. */
+  /** Run local STT on base64 audio (ANY format) → text. ffmpeg normalizes to 16 kHz
+   *  mono WAV first, so the phone can record in its native format. */
   async #transcribe(audioB64: string, locale: string): Promise<string> {
     if (!this.stt) throw new Error("STT not available (no whisper model)");
-    const path = join(tmpdir(), `cato-${ulid()}.wav`);
-    await writeFile(path, Buffer.from(audioB64, "base64"));
+    const inPath = join(tmpdir(), `cato-${ulid()}.audio`);
+    await writeFile(inPath, Buffer.from(audioB64, "base64"));
+    let wavPath: string | undefined;
     try {
-      return await this.stt.transcribe(path, locale);
+      wavPath = await toWav16kMono(inPath, this.config.ffmpegBin);
+      return await this.stt.transcribe(wavPath, locale);
     } finally {
-      await unlink(path).catch(() => {});
+      await unlink(inPath).catch(() => {});
+      if (wavPath) await unlink(wavPath).catch(() => {});
     }
   }
 
   start(): void {
-    const wss = new WebSocketServer({
-      host: this.config.wsHost,
-      port: this.config.wsPort,
-    });
+    // One HTTP server hosts both the WebSocket (phones) and the PreToolUse hook
+    // endpoint (agents POST tool-call approvals here).
+    const http = createServer((req, res) => this.#onHttp(req, res));
+    this.#http = http;
+    const wss = new WebSocketServer({ server: http });
     this.#wss = wss;
 
     wss.on("connection", (socket) => this.#onConnection(socket));
-    wss.on("listening", () => {
+    http.listen(this.config.wsPort, this.config.wsHost, () => {
       console.log(
-        `[ws] listening on ws://${this.config.wsHost}:${this.config.wsPort}/v${PROTOCOL_VERSION}`,
+        `[ws] listening on ws://${this.config.wsHost}:${this.config.wsPort}/v${PROTOCOL_VERSION}` +
+          ` (+ approval hook POST /hooks/pretooluse)`,
       );
     });
 
     // Proactive push: notable events from the bus go to all paired phones unprompted.
     this.bus.onAny((event) => this.#pushEvent(event));
+  }
+
+  /** PreToolUse hook endpoint: an agent asks "may I run this tool?" → ask the human. */
+  #onHttp(req: IncomingMessage, res: ServerResponse): void {
+    if (req.method !== "POST" || req.url !== "/hooks/pretooluse") {
+      res.writeHead(404).end();
+      return;
+    }
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", async () => {
+      try {
+        const p = JSON.parse(body || "{}") as {
+          tool_name?: string;
+          tool_input?: Record<string, unknown>;
+          cwd?: string;
+        };
+        const tool = p.tool_name ?? "Tool";
+        const { title, detail, risk, stats } = summarizeToolCall(tool, p.tool_input ?? {}, p.cwd);
+        const approval: ApprovalRequest = {
+          id: ulid(),
+          project: p.cwd ? basename(p.cwd) : undefined,
+          tool,
+          title,
+          risk,
+          stats,
+          detail,
+        };
+        const decision = await this.#approvals.request(approval);
+        res.writeHead(200, { "content-type": "application/json" }).end(
+          JSON.stringify({
+            hookSpecificOutput: {
+              hookEventName: "PreToolUse",
+              permissionDecision: decision.decision,
+              permissionDecisionReason:
+                decision.reason ?? (decision.decision === "deny" ? "Denied via Cato" : ""),
+            },
+          }),
+        );
+      } catch {
+        res.writeHead(200, { "content-type": "application/json" }).end(
+          JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "ask" } }),
+        );
+      }
+    });
+  }
+
+  #broadcastApproval(approval: ApprovalRequest): void {
+    const f = frame("approval.request", { approval });
+    for (const socket of this.#authed) send(socket, f);
   }
 
   #pushEvent(event: CatoEvent): void {
@@ -74,6 +137,7 @@ export class WsServer {
 
   async stop(): Promise<void> {
     await new Promise<void>((resolve) => this.#wss?.close(() => resolve()));
+    await new Promise<void>((resolve) => this.#http?.close(() => resolve()));
   }
 
   #onConnection(socket: WebSocket): void {
@@ -105,11 +169,21 @@ export class WsServer {
               msg.id,
             ),
           );
+          // Replay any approvals still waiting, so a just-opened phone sees them.
+          for (const approval of this.#approvals.list()) {
+            send(socket, frame("approval.request", { approval }));
+          }
           return;
         }
 
         case "ping":
           return send(socket, frame("pong", {}, msg.id));
+
+        case "approval.resolve": {
+          if (!authenticated) return;
+          this.#approvals.resolve(msg.payload.id, msg.payload.decision, msg.payload.reason);
+          return;
+        }
 
         default: {
           if (!authenticated) {
@@ -149,7 +223,7 @@ export class WsServer {
       if (msg.type === "control.action") {
         const reply = await this.orchestrator.handleControl(
           msg.payload.action,
-          DEFAULT_LOCALE,
+          msg.payload.locale || DEFAULT_LOCALE,
           msg.payload.target,
         );
         if (reply.statuses) send(socket, frame("status.update", { projects: reply.statuses }));

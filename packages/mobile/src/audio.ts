@@ -1,57 +1,34 @@
 /**
- * Audio capture — record a push-to-talk clip as 16 kHz mono WAV (what the desktop's
- * whisper.cpp expects) and read it back as base64 for the WebSocket.
+ * Audio helper. Recording uses the `expo-audio` hook in App.tsx with these options;
+ * here we also read the recorded clip as base64 for the WebSocket.
  *
- * NOTE: iOS LINEARPCM + .wav yields a proper WAV. Android WAV via expo-av is less
- * reliable across devices — if the desktop STT rejects Android audio, either record
- * PCM and add a WAV header, or fall back to typing the command (the text path works
- * identically). This is the one piece that needs on-device verification.
+ * We record LINEAR PCM WAV (16 kHz mono) instead of the default m4a: m4a/MP4 needs a
+ * trailing "moov atom" written on finalize, which was arriving incomplete and breaking
+ * ffmpeg. WAV has its header up front and is the exact format whisper wants anyway.
  */
 
-import { Audio } from "expo-av";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
+import { IOSOutputFormat, AudioQuality, type RecordingOptions } from "expo-audio";
 
-const RECORDING_OPTIONS: Audio.RecordingOptions = {
-  isMeteringEnabled: false,
+export const REC_OPTIONS: RecordingOptions = {
+  extension: ".wav",
+  sampleRate: 16000,
+  numberOfChannels: 1,
+  bitRate: 128000,
   android: {
-    extension: ".wav",
-    outputFormat: Audio.AndroidOutputFormat.DEFAULT,
-    audioEncoder: Audio.AndroidAudioEncoder.DEFAULT,
-    sampleRate: 16000,
-    numberOfChannels: 1,
-    bitRate: 256000,
+    outputFormat: "default",
+    audioEncoder: "default",
   },
   ios: {
-    extension: ".wav",
-    outputFormat: Audio.IOSOutputFormat.LINEARPCM,
-    audioQuality: Audio.IOSAudioQuality.HIGH,
-    sampleRate: 16000,
-    numberOfChannels: 1,
-    bitRate: 256000,
+    outputFormat: IOSOutputFormat.LINEARPCM,
+    audioQuality: AudioQuality.HIGH,
     linearPCMBitDepth: 16,
     linearPCMIsBigEndian: false,
     linearPCMIsFloat: false,
   },
-  web: { mimeType: "audio/wav", bitsPerSecond: 256000 },
+  web: { mimeType: "audio/wav", bitsPerSecond: 128000 },
 };
 
-export class PushToTalk {
-  #recording: Audio.Recording | undefined;
-
-  async start(): Promise<void> {
-    await Audio.requestPermissionsAsync();
-    await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-    const { recording } = await Audio.Recording.createAsync(RECORDING_OPTIONS);
-    this.#recording = recording;
-  }
-
-  /** Stop recording and return the clip as a base64 WAV string. */
-  async stopAndGetBase64(): Promise<string | null> {
-    if (!this.#recording) return null;
-    await this.#recording.stopAndUnloadAsync();
-    const uri = this.#recording.getURI();
-    this.#recording = undefined;
-    if (!uri) return null;
-    return FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-  }
+export async function readBase64(uri: string): Promise<string> {
+  return FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
 }

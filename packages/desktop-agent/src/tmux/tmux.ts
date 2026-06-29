@@ -9,7 +9,10 @@ import { promisify } from "node:util";
 
 const exec = promisify(execFile);
 
+/** Cato-SPAWNED sessions (managed, recovery-eligible). */
 export const SESSION_PREFIX = "cato_";
+/** User sessions launched via the `cato` wrapper — auto-adopted + captured. */
+export const ADOPT_PREFIX = "cato-";
 
 export async function hasTmux(): Promise<boolean> {
   try {

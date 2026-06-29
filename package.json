@@ -6,13 +6,14 @@
   "type": "module",
   "workspaces": [
     "packages/shared",
-    "packages/desktop-agent",
-    "packages/mobile"
+    "packages/desktop-agent"
   ],
   "engines": {
     "node": ">=20"
   },
   "scripts": {
+    "start": "node packages/desktop-agent/dist/index.js",
+    "setup": "./install.sh",
     "build": "npm run build -w @cato/shared && npm run build -w @cato/desktop-agent",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "dev:agent": "npm run dev -w @cato/desktop-agent",

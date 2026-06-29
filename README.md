@@ -3,46 +3,70 @@
 > Voice-first operating system for AI coding agents.
 > **Cato remembers. Workers implement.**
 
-A persistent orchestrator that manages disposable AI coding agents (Claude Code,
-Codex, Cursor, …), remembers everything across projects, and lets you control your
-whole engineering workflow by voice.
+Cato (**C**oding **A**gent **T**ask **O**rchestrator) is a persistent, local-first brain
+that watches your AI coding agents (Claude Code, Codex), remembers everything across
+projects, alerts you when something needs attention — and lets you drive it all by voice
+from your phone. Leave the desk; keep shipping.
 
-Full specification lives in [`docs/`](./docs):
-[PROJECT](./docs/PROJECT.md) ·
-[ARCHITECTURE](./docs/ARCHITECTURE.md) ·
-[PROTOCOL](./docs/PROTOCOL.md) ·
-[MEMORY-SCHEMA](./docs/MEMORY-SCHEMA.md) ·
-[MVP](./docs/MVP.md)
+Spec: [`docs/`](./docs) — [PROJECT](./docs/PROJECT.md) · [ARCHITECTURE](./docs/ARCHITECTURE.md) · [PROTOCOL](./docs/PROTOCOL.md) · [MEMORY-SCHEMA](./docs/MEMORY-SCHEMA.md) · [MVP](./docs/MVP.md)
 
-## Monorepo layout
-
-```
-packages/
-  shared/          # types: CodingAgent, protocol messages, events
-  desktop-agent/   # the brain: orchestrator + memory + agent manager + ws server
-  mobile/          # React Native (Expo) voice terminal  (scaffolded in Phase 4)
-infra/
-  docker-compose.yml   # PostgreSQL 16 + pgvector
-  db/schema.sql        # memory schema
-```
-
-## Quick start (Phase 0)
+## Install (macOS)
 
 ```bash
-# 1. install deps
-npm install
-
-# 2. start the database (PostgreSQL + pgvector); schema is applied on first boot
-npm run db:up
-
-# 3. build / typecheck the workspaces
-npm run build
+git clone <repo> cato && cd cato
+./install.sh
 ```
 
-The database initializes `infra/db/schema.sql` automatically on first start
-(mounted into the container's init dir). To re-apply manually: `npm run db:schema`.
+The installer sets up everything: tmux · ffmpeg · whisper.cpp · Ollama + models
+(bge-m3, qwen3:4b) · whisper large-v3-turbo · Postgres+pgvector (Docker) · builds the
+agent · and links the `cato` launcher onto your PATH. Re-running is safe (idempotent).
 
-## Status
+Prereqs it expects: **Homebrew**, **Node ≥20**, **Docker Desktop**, and at least one
+coding agent — **Claude Code** (`claude`) and/or **Codex** (`codex`).
 
-Phase 0 — foundations: monorepo, database, shared types. See
-[`docs/MVP.md`](./docs/MVP.md) for the phased plan.
+## Use it
+
+```bash
+npm start          # 1. start the Cato brain (always-on desktop agent)
+cato               # 2. launch your agent in any project — it runs in a tmux
+                   #    session Cato auto-watches. `cato codex` for Codex.
+```
+
+Work normally; detach (Ctrl-b d) and walk away. On your phone (same Wi-Fi), open the
+Cato app, Connect, hold the button and talk:
+
+- *"Čo sa deje?"* — what's happening across all projects
+- *"Povedz <projekt> …"* — send an instruction (with relevant memory injected)
+- *"Spusti claude na projekte X"* — start a worker by voice
+- *"Continue." / "Stop." / "Zhrň to."*
+
+Cato pushes alerts unprompted (e.g. a worker error) and survives worker crashes by
+relaunching from checkpoints.
+
+## How it sees your sessions
+
+Run agents via **`cato`** (not `claude`/`codex` directly). It launches them in a
+`cato-<project>` tmux session that the brain auto-discovers and captures via rendered
+snapshots — never by parsing an agent's private files (agent-agnostic). For a seamless
+habit, alias it:
+
+```sh
+# ~/.zshrc — make `claude` always run under Cato
+claude() { cato claude "$@"; }
+```
+
+## Mobile
+
+React Native (Expo) voice terminal in [`packages/mobile`](./packages/mobile). iOS dev
+build via Xcode today (see its README); TestFlight for friends is the next step.
+
+## Layout
+
+```
+packages/shared          types: CodingAgent, protocol, events
+packages/desktop-agent    the brain: capture · memory · orchestrator · recovery · ws · stt/llm
+packages/mobile           Expo voice terminal
+infra/                    docker-compose + schema.sql
+bin/cato                  the launcher
+install.sh                one-command setup
+```

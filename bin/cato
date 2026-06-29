@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# cato — launch a coding agent inside a tmux session that Cato auto-discovers and
+# captures. Run your agent via `cato` instead of directly and it always lands in a
+# pane Cato is watching. Supports claude-cli and codex-cli out of the box.
+#
+#   cato                 # launches the default agent (claude, else codex)
+#   cato codex           # launch codex
+#   cato claude --resume <id>
+#
+# Session is `cato-<project>`; re-running attaches to it (one agent per project).
+# Detach with Ctrl-b d and walk away — Cato keeps capturing.
+set -euo pipefail
+
+# Pick the agent: explicit first arg, else the first installed of claude / codex.
+if [ "$#" -gt 0 ] && command -v "$1" >/dev/null 2>&1; then
+  agent="$1"; shift
+elif command -v claude >/dev/null 2>&1; then agent="claude"
+elif command -v codex  >/dev/null 2>&1; then agent="codex"
+else
+  echo "cato: no coding agent found. Install one:" >&2
+  echo "  claude:  https://docs.claude.com/claude-code" >&2
+  echo "  codex:   npm i -g @openai/codex" >&2
+  exit 1
+fi
+
+# Install Cato's approval hook into THIS project (Claude only; project-scoped, so it
+# never gates your global claude or other sessions).
+if [ "$agent" = "claude" ]; then
+  self="$0"; [ -L "$self" ] && self="$(readlink "$self")"
+  selfdir="$(cd "$(dirname "$self")" && pwd)"
+  node "$selfdir/cato-install-hook.mjs" "$PWD" "${CATO_WS_PORT:-8787}" 2>/dev/null || true
+fi
+
+# Already inside tmux: just run it (your current session is what Cato sees).
+if [ -n "${TMUX:-}" ]; then exec "$agent" "$@"; fi
+
+proj="cato-$(basename "$PWD" | tr -c 'A-Za-z0-9_-' '_')"
+exec tmux new-session -A -s "$proj" "$agent" "$@"

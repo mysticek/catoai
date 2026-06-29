@@ -22,7 +22,7 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const bus = new EventBus();
   const pool = createPool(config.databaseUrl);
-  const embedder = await createEmbedder({ dim: config.embeddingDim });
+  const embedder = await createEmbedder({ dim: config.embeddingDim, model: config.embeddingModel });
   // Memory routes every appended event to the bus → live push + reactions.
   const memory = new MemoryEngine(pool, embedder, (e) => bus.emit(e));
   console.log(`[cato] embeddings: ${embedder.kind} (dim ${embedder.dim})`);

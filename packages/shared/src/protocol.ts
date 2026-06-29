@@ -29,9 +29,26 @@ export type ClientMessage =
       { audio?: string; text?: string; locale: string; target?: CommandTarget }
     >
   | Envelope<"voice.cancel", Record<string, never>>
-  | Envelope<"control.action", { action: ControlAction; target?: CommandTarget }>
+  | Envelope<"control.action", { action: ControlAction; target?: CommandTarget; locale?: string }>
+  | Envelope<"approval.resolve", { id: string; decision: "allow" | "deny"; reason?: string }>
   | Envelope<"subscribe", { streams: string[] }>
   | Envelope<"ping", Record<string, never>>;
+
+/** A pending tool-call approval (from an agent's PreToolUse gate). */
+export interface ApprovalRequest {
+  id: string;
+  project?: string;
+  /** Tool being gated, e.g. "Bash" / "Edit" / "Write". */
+  tool: string;
+  /** Short glanceable title, e.g. "Run command" / "Edit index.ts" (basename only). */
+  title: string;
+  /** Heuristic risk so dangerous ops stand out at a glance. */
+  risk: "low" | "medium" | "high";
+  /** Short stats line, e.g. "+4 −0 · 1 file" (empty for simple commands). */
+  stats: string;
+  /** The full command / diff — collapsed on the card, expand to review. */
+  detail: string;
+}
 
 // ---- Server -> Client -------------------------------------------------------
 
@@ -52,6 +69,7 @@ export type ServerMessage =
   | Envelope<"speech.say", { text: string; locale: string; audio?: string }>
   | Envelope<"status.update", { projects: ProjectStatus[] }>
   | Envelope<"event.push", { event: CatoEvent }>
+  | Envelope<"approval.request", { approval: ApprovalRequest }>
   | Envelope<"error", { code: string; message: string }>
   | Envelope<"pong", Record<string, never>>;
 

@@ -5,9 +5,11 @@ export interface Config {
   wsHost: string;
   wsPort: number;
   pairingToken: string;
+  embeddingModel: string;
   embeddingDim: number;
   sttBin: string;
   sttModel: string;
+  ffmpegBin: string;
   workspaceRoot: string;
   llmModel: string;
 }
@@ -27,14 +29,18 @@ export function loadConfig(): Config {
     wsHost: env("WS_HOST", "0.0.0.0"),
     wsPort: Number(env("WS_PORT", "8787")),
     pairingToken: env("PAIRING_TOKEN", "changeme"),
-    embeddingDim: Number(env("EMBEDDING_DIM", "768")),
+    embeddingModel: env("EMBEDDING_MODEL", "bge-m3"),
+    embeddingDim: Number(env("EMBEDDING_DIM", "1024")),
     sttBin: env("STT_BIN", "whisper-cli"),
     sttModel: env(
       "STT_MODEL",
-      `${process.env.HOME ?? ""}/.cato/models/ggml-base.bin`,
+      `${process.env.HOME ?? ""}/.cato/models/ggml-large-v3-turbo.bin`,
     ),
+    ffmpegBin: env("FFMPEG_BIN", "ffmpeg"),
     // Where Cato looks for project folders when voice-spawning a worker.
     workspaceRoot: env("WORKSPACE_ROOT", `${process.env.HOME ?? ""}/dev`),
-    llmModel: env("LLM_MODEL", "qwen2.5:1.5b"),
+    // gemma3:4b = non-reasoning multilingual instruct → clean Slovak summaries + JSON
+    // intent classification (qwen3 is a reasoning model and leaks its thinking into prose).
+    llmModel: env("LLM_MODEL", "gemma3:4b"),
   };
 }

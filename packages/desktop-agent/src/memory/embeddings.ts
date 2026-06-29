@@ -1,7 +1,7 @@
 /**
  * Embeddings — local-first (docs/ARCHITECTURE.md §1). Primary: Ollama
- * (nomic-embed-text, 768-dim). Fallback: a deterministic hash embedder so the
- * pipeline still works offline with no model (NOT semantic — lexical only).
+ * (bge-m3, 1024-dim, multilingual incl. Slovak). Fallback: a deterministic hash
+ * embedder so the pipeline still works offline with no model (NOT semantic — lexical).
  *
  * The active dimension MUST match infra/db/schema.sql VECTOR(n).
  */
@@ -66,7 +66,7 @@ export async function createEmbedder(opts: {
   url?: string;
 }): Promise<Embedder> {
   const url = opts.url ?? "http://localhost:11434";
-  const model = opts.model ?? "nomic-embed-text";
+  const model = opts.model ?? "bge-m3";
   try {
     const res = await fetch(`${url}/api/tags`, { signal: AbortSignal.timeout(1500) });
     if (res.ok) return new OllamaEmbedder(opts.dim, model, url);

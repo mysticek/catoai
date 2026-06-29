@@ -17,7 +17,7 @@ import { SnapshotCaptureSource } from "../capture/snapshot.js";
 import type { CaptureSource } from "../capture/source.js";
 import { PROFILES } from "./profiles.js";
 import {
-  listAllSessions, capturePaneHistory, newShellSession, sendLine, SESSION_PREFIX,
+  listAllSessions, capturePaneHistory, newShellSession, sendLine, SESSION_PREFIX, ADOPT_PREFIX,
 } from "../tmux/tmux.js";
 
 interface Tracked {
@@ -77,7 +77,9 @@ export class AgentManager {
     try {
       const all = await listAllSessions();
       const live = new Set(all); // includes our cato_* spawned sessions
-      const adoptable = all.filter((s) => !s.startsWith(SESSION_PREFIX));
+      // Adopt only sessions launched via the `cato` wrapper (cato-<project>),
+      // never Cato-spawned (cato_*) nor unrelated user tmux sessions.
+      const adoptable = all.filter((s) => s.startsWith(ADOPT_PREFIX));
       for (const s of adoptable) if (!this.#tracked.has(s)) await this.#adopt(s);
       for (const [s, t] of this.#tracked) {
         if (!live.has(s)) {
@@ -93,7 +95,7 @@ export class AgentManager {
   }
 
   async #adopt(session: string): Promise<void> {
-    const projectName = session.slice(0, 40) || session;
+    const projectName = (session.startsWith(ADOPT_PREFIX) ? session.slice(ADOPT_PREFIX.length) : session).slice(0, 40) || session;
     const projectId = await this.memory.ensureProject(projectName, process.cwd());
     const taskId = await this.memory.createTask(projectId, "adoptovaná session");
     const workerId = await this.memory.startWorker({

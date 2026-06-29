@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS event (
   importance  REAL NOT NULL DEFAULT 0,         -- 0..1
   data        JSONB NOT NULL DEFAULT '{}',
   summary     TEXT,                            -- short, voice-ready
-  embedding   VECTOR(768),                     -- nullable: only notable events embedded
+  embedding   VECTOR(1024),                     -- nullable: only notable events embedded
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS memory (
   content         TEXT NOT NULL,
   importance      REAL NOT NULL DEFAULT 0.5,
   source_event_id UUID REFERENCES event(id),
-  embedding       VECTOR(768),
+  embedding       VECTOR(1024),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

@@ -294,6 +294,22 @@ export class MemoryEngine {
     }));
   }
 
+  /** All known project names (for NLU intent classification context). */
+  async listProjects(): Promise<string[]> {
+    const { rows } = await this.pool.query<{ name: string }>(`SELECT name FROM project ORDER BY name`);
+    return rows.map((r) => r.name);
+  }
+
+  /** The live tail of a project's captured terminal output (chronological). */
+  async recentCapture(projectName: string, limit = 50): Promise<string[]> {
+    const { rows } = await this.pool.query<{ content: string }>(
+      `SELECT cl.content FROM capture_line cl JOIN project p ON p.id = cl.project_id
+       WHERE p.name = $1 ORDER BY cl.id DESC LIMIT $2`,
+      [projectName, limit],
+    );
+    return rows.map((r) => r.content).reverse();
+  }
+
   /** A running worker we can route input to. */
   async runningWorker(projectName?: string): Promise<{
     workerId: string;

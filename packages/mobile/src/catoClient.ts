@@ -12,11 +12,22 @@ export interface ProjectStatus {
   summary: string;
 }
 
+export interface ApprovalRequest {
+  id: string;
+  project?: string;
+  tool: string;
+  title: string;
+  risk: "low" | "medium" | "high";
+  stats: string;
+  detail: string;
+}
+
 export interface CatoClientHandlers {
   onWelcome?: () => void;
   onTranscript?: (text: string) => void;
   onSpeak?: (text: string, locale: string) => void;
   onStatus?: (projects: ProjectStatus[]) => void;
+  onApproval?: (approval: ApprovalRequest) => void;
   onError?: (code: string, message: string) => void;
   onClose?: () => void;
 }
@@ -61,6 +72,11 @@ export class CatoClient {
     this.#send("control.action", { action });
   }
 
+  /** Answer a pending tool-call approval. */
+  resolveApproval(approvalId: string, decision: "allow" | "deny", reason?: string): void {
+    this.#send("approval.resolve", { id: approvalId, decision, reason });
+  }
+
   #send(type: string, payload: unknown): void {
     this.#ws?.send(
       JSON.stringify({ v: PROTOCOL_VERSION, id: id(), type, ts: new Date().toISOString(), payload }),
@@ -84,6 +100,8 @@ export class CatoClient {
         return this.handlers.onSpeak?.(String(p.text ?? ""), String(p.locale ?? "sk"));
       case "status.update":
         return this.handlers.onStatus?.((p.projects as ProjectStatus[]) ?? []);
+      case "approval.request":
+        return this.handlers.onApproval?.(p.approval as ApprovalRequest);
       case "error":
         return this.handlers.onError?.(String(p.code ?? "error"), String(p.message ?? ""));
     }
