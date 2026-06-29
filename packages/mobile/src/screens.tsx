@@ -186,7 +186,7 @@ export function ApprovalsScreen({
     <View style={L.fill}>
       <ScreenTitle
         title="Approvals"
-        sub={approvals.length ? `Across your projects · oldest ${timeAgo(oldest && (oldest as any).ts)}` : undefined}
+        sub={approvals.length ? `Across your projects · oldest ${timeAgo(oldest?.ts)}` : undefined}
         right={approvals.length ? (
           <Pill color={C.waiting}>
             <View style={st.pendRow}><Dot color={C.waiting} /><Text style={st.pendText}>{approvals.length} pending</Text></View>
@@ -237,7 +237,7 @@ export function ApprovalCard({ a, onResolve, onOpen }: { a: ApprovalRequest; onR
               <Text style={st.apTool}>{a.tool}{a.stats ? ` · ${a.stats}` : ""}</Text>
             </View>
           </View>
-          <Text style={st.apMeta}>{[a.project, timeAgo((a as any).ts)].filter(Boolean).join(" · ")}</Text>
+          <Text style={st.apMeta}>{[a.project, timeAgo(a.ts)].filter(Boolean).join(" · ")}</Text>
         </View>
 
         <Text style={st.apHeading}>{a.title}</Text>

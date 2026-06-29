@@ -134,6 +134,7 @@ export class WsServer {
           risk,
           stats,
           detail,
+          ts: new Date().toISOString(),
         };
         // Push the card NOW; let the LLM parse a plain-language summary + quick replies
         // in the background and send an approval.update when ready (no push-path latency).

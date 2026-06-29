@@ -59,6 +59,8 @@ export interface ApprovalRequest {
   stats: string;
   /** The full command / diff — collapsed on the card, expand to review. */
   detail: string;
+  /** When the approval was raised (ISO-8601) — for "4m ago" on the card. */
+  ts?: string;
   /** LLM-parsed plain-language explanation of what this does (for nice display). */
   summary?: string;
   /** LLM-suggested quick actions/replies (e.g. "Approve", "Deny: add tests too"). */

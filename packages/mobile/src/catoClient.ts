@@ -22,6 +22,8 @@ export interface ApprovalRequest {
   risk: "low" | "medium" | "high";
   stats: string;
   detail: string;
+  /** When the approval was raised (ISO) — for "4m ago". */
+  ts?: string;
   /** LLM-parsed plain-language explanation (arrives via approval.update). */
   summary?: string;
   /** LLM-suggested quick replies (arrives via approval.update). */
