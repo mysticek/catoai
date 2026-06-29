@@ -32,11 +32,19 @@ Prereqs: **Node ≥20** and at least one coding agent — **Claude Code** (`clau
 ## Use it
 
 ```bash
+cato setup            # one-time: pick your workspace + get a pairing token & QR (secures it)
 cato                  # launch your agent in any project — it runs in a tmux session
                       # Cato auto-watches. `cato codex` for Codex.
 npm run daemon:on     # (optional) run the Cato brain always-on (auto-start on login)
-# or, foreground:  npm start
+cato doctor           # diagnose setup (deps, models, onboarding, security, agent)
+# or run the brain in the foreground:  npm start
 ```
+
+On your phone (same Wi‑Fi), open the Cato app — it **auto-discovers** your machine
+(mDNS). Scan the QR from `cato setup` (or enter the token) to pair: the link is
+**end-to-end encrypted** and the agent exposes nothing until it's set up. See
+[`docs/SECURITY.md`](./docs/SECURITY.md). Remote access (from anywhere) via the optional
+**Cato Relay** — [`docs/RELAY.md`](./docs/RELAY.md).
 
 Work normally; detach (Ctrl-b d) and walk away. On your phone (same Wi-Fi), open the
 Cato app, Connect, hold the button and talk:
