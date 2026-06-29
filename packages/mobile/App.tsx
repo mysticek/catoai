@@ -55,6 +55,7 @@ export default function App() {
     client.current?.close();
     setActive(address);
     setConnectingTo(address);
+    const pub = machines.find((m) => m.address === address)?.pub; // E2E when we know the key
     const c = new CatoClient(address, token ?? "changeme", {
       onWelcome: (ps, meta) => {
         setConnected(true); setConnectingTo(undefined); setProjects(ps);
@@ -79,10 +80,10 @@ export default function App() {
         else if (code === "unauthorized") setTokenFor(address);
       },
       onClose: () => { setConnected(false); setConnectingTo(undefined); },
-    });
+    }, pub);
     c.connect();
     client.current = c;
-  }, []);
+  }, [machines]);
 
   // Tap a machine → gate on setup, then token, then connect.
   const handleConnect = useCallback((address: string) => {

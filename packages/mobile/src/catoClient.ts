@@ -4,6 +4,8 @@
  * WebSocket (no `ws` package on device).
  */
 
+import { sealHandshake, encrypt, decrypt, type Enc } from "./crypto";
+
 const PROTOCOL_VERSION = 1 as const;
 
 export type ProjectState = "idle" | "active" | "waiting" | "attention";
@@ -66,17 +68,36 @@ const id = (): string => `m${Date.now()}_${counter++}`;
 
 export class CatoClient {
   #ws: WebSocket | undefined;
+  #sessionKey: string | undefined; // set once an E2E session is negotiated
 
   constructor(
     private readonly url: string,
     private readonly token: string,
     private readonly handlers: CatoClientHandlers = {},
+    private readonly agentPub?: string, // agent public key (from QR / /info) → E2E
   ) {}
 
   connect(): void {
     const ws = new WebSocket(this.url);
     this.#ws = ws;
-    ws.onopen = () => this.#send("hello", { token: this.token, device: "mobile", clientVersion: "0.0.0" });
+    ws.onopen = () => {
+      // Prefer an encrypted handshake when we know the agent's public key; on any crypto
+      // problem fall back to plaintext (the agent still gates on the token).
+      if (this.agentPub) {
+        try {
+          const { sealed, sessionKey } = sealHandshake(
+            { token: this.token, device: "mobile", clientVersion: "0.0.0" },
+            this.agentPub,
+          );
+          this.#sessionKey = sessionKey;
+          this.#sendRaw("secure.hello", { sealed });
+          return;
+        } catch {
+          this.#sessionKey = undefined;
+        }
+      }
+      this.#sendRaw("hello", { token: this.token, device: "mobile", clientVersion: "0.0.0" });
+    };
     ws.onclose = () => this.handlers.onClose?.();
     ws.onerror = () => this.handlers.onError?.("ws", "connection error");
     ws.onmessage = (ev) => this.#onMessage(String(ev.data));
@@ -126,7 +147,17 @@ export class CatoClient {
     this.#send("worker.spawn", { agentKind, path, task: task || undefined });
   }
 
+  /** Send a frame — encrypted (wrapped in `enc`) once an E2E session exists, else plain. */
   #send(type: string, payload: unknown): void {
+    if (this.#sessionKey) {
+      const inner = { v: PROTOCOL_VERSION, id: id(), type, ts: new Date().toISOString(), payload };
+      this.#sendRaw("enc", { enc: encrypt(inner, this.#sessionKey) });
+    } else {
+      this.#sendRaw(type, payload);
+    }
+  }
+
+  #sendRaw(type: string, payload: unknown): void {
     this.#ws?.send(
       JSON.stringify({ v: PROTOCOL_VERSION, id: id(), type, ts: new Date().toISOString(), payload }),
     );
@@ -139,6 +170,16 @@ export class CatoClient {
     } catch {
       return;
     }
+    // Encrypted envelope → decrypt to the real message with our session key.
+    if (msg.type === "enc" && this.#sessionKey) {
+      const inner = decrypt<{ type: string; payload: Record<string, unknown> }>(msg.payload.enc as Enc, this.#sessionKey);
+      if (inner) { this.#dispatch(inner); }
+      return;
+    }
+    this.#dispatch(msg);
+  }
+
+  #dispatch(msg: { type: string; payload: Record<string, unknown> }): void {
     const p = msg.payload ?? {};
     switch (msg.type) {
       case "welcome":

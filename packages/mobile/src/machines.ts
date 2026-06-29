@@ -11,6 +11,7 @@ export interface Machine {
   name?: string; // hostname, learned on connect
   platform?: string; // darwin | linux | win32
   token?: string; // pairing token (from `cato setup`) — required to connect
+  pub?: string; // agent public key (pinned) → end-to-end encrypted session
   lastSeen?: number;
   discovered?: boolean; // found live on the network via mDNS (not from saved list)
   online?: boolean; // reachable right now (responded to /info)
@@ -24,6 +25,7 @@ export interface MachineInfo {
   platform?: string;
   secured?: boolean;
   onboarded?: boolean;
+  pub?: string;
 }
 
 /**
@@ -33,7 +35,7 @@ export interface MachineInfo {
  */
 export function applyIdentity(list: Machine[], address: string, info: MachineInfo): Machine[] {
   if (!info.id) {
-    return upsert(list, { address, name: info.host, platform: info.platform, secured: info.secured, onboarded: info.onboarded, online: true, lastSeen: Date.now() });
+    return upsert(list, { address, name: info.host, platform: info.platform, secured: info.secured, onboarded: info.onboarded, pub: info.pub, online: true, lastSeen: Date.now() });
   }
   const prev = list.find((m) => m.id === info.id) ?? list.find((m) => m.address === address);
   const merged: Machine = {
@@ -44,6 +46,7 @@ export function applyIdentity(list: Machine[], address: string, info: MachineInf
     platform: info.platform ?? prev?.platform,
     secured: info.secured,
     onboarded: info.onboarded,
+    pub: info.pub ?? prev?.pub,
     online: true,
     lastSeen: Date.now(),
   };
