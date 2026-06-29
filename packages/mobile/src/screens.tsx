@@ -390,7 +390,8 @@ export function PairScreen({
 
       <View style={st.machineList}>
         <Text style={st.machineSection}>YOUR MACHINES</Text>
-        {machines.length === 0 && !adding && <Text style={st.machineEmpty}>No machines yet — add your desktop's address.</Text>}
+        <Text style={st.machineHint}>Cato agents broadcasting on your Wi-Fi show up here automatically.</Text>
+        {machines.length === 0 && !adding && <Text style={st.machineEmpty}>Nothing found yet — make sure Cato is running, or add one by URL below.</Text>}
         {machines.map((m) => {
           const busy = connectingTo === m.address;
           return (
@@ -421,7 +422,7 @@ export function PairScreen({
         ) : (
           <Pressable onPress={() => setAdding(true)} style={st.addMachine}>
             <Icon name="plus" size={18} color={C.accent} />
-            <Text style={st.addMachineText}>Add a machine</Text>
+            <Text style={st.addMachineText}>Add by URL</Text>
           </Pressable>
         )}
       </View>
@@ -567,7 +568,8 @@ const st = StyleSheet.create({
   pairWrap: { paddingHorizontal: 24, alignItems: "center", flexGrow: 1, paddingBottom: 40 },
   spacer40: { height: 40 },
   machineList: { width: "100%", marginBottom: 8 },
-  machineSection: { color: C.textDim, fontSize: 12, fontWeight: "600", letterSpacing: 0.4, marginBottom: 10 },
+  machineSection: { color: C.textDim, fontSize: 12, fontWeight: "600", letterSpacing: 0.4, marginBottom: 4 },
+  machineHint: { color: C.textMute, fontSize: 12, lineHeight: 17, marginBottom: 12 },
   machineEmpty: { color: C.textMute, fontSize: 13, marginBottom: 12, lineHeight: 18 },
   machineRow: { flexDirection: "row", alignItems: "center", gap: 13, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 15, padding: 14, marginBottom: 10 },
   machineRowOff: { opacity: 0.55 },
