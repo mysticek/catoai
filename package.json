@@ -2,7 +2,7 @@
   "name": "cato",
   "version": "0.0.0",
   "private": true,
-  "description": "Cato — voice-first operating system for AI coding agents",
+  "description": "Cato \u2014 voice-first operating system for AI coding agents",
   "type": "module",
   "workspaces": [
     "packages/shared",
@@ -19,7 +19,8 @@
     "build": "npm run build -w @cato/shared && npm run build -w @cato/desktop-agent",
     "test": "node --import tsx --test packages/desktop-agent/test/*.test.ts",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "dev:agent": "npm run dev -w @cato/desktop-agent"
+    "dev:agent": "npm run dev -w @cato/desktop-agent",
+    "doctor": "node bin/cato-doctor.mjs"
   },
   "dependencies": {
     "qrcode-terminal": "^0.12.0"
