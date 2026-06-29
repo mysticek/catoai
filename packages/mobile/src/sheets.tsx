@@ -6,7 +6,7 @@ import { useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { C, tint, MONO } from "./theme";
 import { Icon, Pill, Btn, L } from "./ui";
-import type { ApprovalRequest, AgentQuestion, ProjectStatus } from "./catoClient";
+import type { ApprovalRequest, AgentQuestion } from "./catoClient";
 
 type Scope = "once" | "session" | "command";
 
@@ -163,12 +163,10 @@ export function MultiChoiceSheet({ question, onClose, onAnswer }: { question: Ag
   );
 }
 
-export function StartAgentSheet({ projects, onClose, onStart }: { projects: ProjectStatus[]; onClose: () => void; onStart: (project: string, agent: string, task: string) => void }) {
-  const [project, setProject] = useState(projects[0]?.name ?? "");
-  const [custom, setCustom] = useState("");
+export function StartAgentSheet({ folders, root, onClose, onStart }: { folders: string[]; root: string; onClose: () => void; onStart: (project: string, agent: string, task: string) => void }) {
+  const [project, setProject] = useState(folders[0] ?? "");
   const [agent, setAgent] = useState("claude-code");
   const [task, setTask] = useState("");
-  const chosen = project === "__new" ? custom.trim() : project;
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={st.backdrop} onPress={onClose} />
@@ -176,19 +174,17 @@ export function StartAgentSheet({ projects, onClose, onStart }: { projects: Proj
         <View style={st.grabber} />
         <Text style={[st.question, st.startTitle]}>Start an agent</Text>
 
-        <Text style={st.label}>PROJECT</Text>
-        <View style={st.tagWrap}>
-          {projects.map((p) => (
-            <Pressable key={p.name} onPress={() => setProject(p.name)} style={[st.tag, project === p.name && st.tagOn]}>
-              <Text style={[st.tagText, project === p.name && st.tagTextOn]}>{p.name}</Text>
-            </Pressable>
-          ))}
-          <Pressable onPress={() => setProject("__new")} style={[st.tag, project === "__new" && st.tagOn]}>
-            <Text style={[st.tagText, project === "__new" && st.tagTextOn]}>+ New</Text>
-          </Pressable>
-        </View>
-        {project === "__new" && (
-          <TextInput value={custom} onChangeText={setCustom} placeholder="project name" placeholderTextColor={C.textMute} autoCapitalize="none" style={st.input} />
+        <Text style={st.label}>PROJECT FOLDER{root ? `  ·  ${root}` : ""}</Text>
+        {folders.length === 0 ? (
+          <Text style={st.startEmpty}>No project folders found in {root || "the workspace"}. Create one there on your desktop first.</Text>
+        ) : (
+          <View style={st.tagWrap}>
+            {folders.map((f) => (
+              <Pressable key={f} onPress={() => setProject(f)} style={[st.tag, project === f && st.tagOn]}>
+                <Text style={[st.tagText, project === f && st.tagTextOn]}>{f}</Text>
+              </Pressable>
+            ))}
+          </View>
         )}
 
         <Text style={st.label}>TASK</Text>
@@ -204,8 +200,8 @@ export function StartAgentSheet({ projects, onClose, onStart }: { projects: Proj
         </View>
 
         <Pressable
-          onPress={() => { if (chosen) { onStart(chosen, agent, task.trim()); onClose(); } }}
-          style={[st.pairBtn, !chosen && st.disabled]}
+          onPress={() => { if (project) { onStart(project, agent, task.trim()); onClose(); } }}
+          style={[st.pairBtn, !project && st.disabled]}
         >
           <Icon name="rocket" size={17} color={C.onAccent} />
           <Text style={st.pairBtnText}>Start agent</Text>
@@ -271,6 +267,7 @@ const st = StyleSheet.create({
   tagOn: { backgroundColor: C.accent, borderColor: C.accent },
   tagText: { color: "#c9cad1", fontWeight: "600", fontSize: 13 },
   tagTextOn: { color: C.onAccent },
+  startEmpty: { color: C.textMute, fontSize: 13, lineHeight: 18, marginBottom: 6 },
   input: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 12, padding: 13, color: C.text, fontSize: 14, marginBottom: 8, textAlignVertical: "top" },
   taskInput: { height: 70, marginBottom: 14 },
   pairBtn: { height: 54, backgroundColor: C.accent, borderRadius: 15, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },

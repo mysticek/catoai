@@ -10,6 +10,7 @@ import { ulid } from "ulid";
 import { friendlyHost } from "../util/host.js";
 import { machineId } from "../util/machine-id.js";
 import { writeFile, unlink } from "node:fs/promises";
+import { readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, basename } from "node:path";
 import {
@@ -104,6 +105,22 @@ export class WsServer {
     if (req.method === "GET" && (req.url === "/info" || req.url === "/v1/info")) {
       res.writeHead(200, { "content-type": "application/json; charset=utf-8" }).end(
         JSON.stringify({ id: machineId(), host: friendlyHost(), platform: process.platform, version: SERVER_VERSION }),
+      );
+      return;
+    }
+    // Folders under the workspace root → the phone's "start an agent" picker.
+    if (req.method === "GET" && req.url === "/folders") {
+      let folders: string[] = [];
+      try {
+        folders = readdirSync(this.config.workspaceRoot, { withFileTypes: true })
+          .filter((d) => d.isDirectory() && !d.name.startsWith("."))
+          .map((d) => d.name)
+          .sort();
+      } catch {
+        /* workspace root missing → empty */
+      }
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8" }).end(
+        JSON.stringify({ root: this.config.workspaceRoot, folders }),
       );
       return;
     }

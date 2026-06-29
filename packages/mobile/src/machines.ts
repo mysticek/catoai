@@ -87,6 +87,21 @@ export async function fetchMachineInfo(address: string): Promise<MachineInfo | n
   }
 }
 
+/** List the project folders the agent can start an agent in (under its workspace root). */
+export async function fetchFolders(address: string): Promise<{ root: string; folders: string[] } | null> {
+  const base = address.replace(/^ws(s?):\/\//i, "http$1://").replace(/\/v1\/?$/i, "");
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 2500);
+    const res = await fetch(`${base}/folders`, { signal: ctrl.signal });
+    clearTimeout(t);
+    if (!res.ok) return null;
+    return (await res.json()) as { root: string; folders: string[] };
+  } catch {
+    return null;
+  }
+}
+
 /** Display name for a machine: its network/host name, else the host from its address. */
 export function machineLabel(m: Machine): string {
   if (m.name) return m.name.replace(/\.local\.?$/i, "");

@@ -17,7 +17,7 @@ import {
   TalkScreen, ApprovalsScreen, ActivityScreen, ProjectsScreen, PairScreen, TabBar, ListeningOverlay, AppBar, type Tab,
 } from "./src/screens";
 import { ApprovalDetailSheet, MultiChoiceSheet, StartAgentSheet } from "./src/sheets";
-import { loadMachines, saveMachines, upsert, applyIdentity, fetchMachineInfo, type Machine } from "./src/machines";
+import { loadMachines, saveMachines, upsert, applyIdentity, fetchMachineInfo, fetchFolders, type Machine } from "./src/machines";
 import { useDiscovery } from "./src/discovery";
 
 const extra = (Constants.expoConfig?.extra ?? {}) as { desktopWsUrl?: string; pairingToken?: string };
@@ -36,6 +36,7 @@ export default function App() {
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [question, setQuestion] = useState<AgentQuestion | null>(null);
   const [exchange, setExchange] = useState<{ user?: string; cato?: string }>({});
+  const [folders, setFolders] = useState<{ root: string; folders: string[] }>({ root: "", folders: [] });
 
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -56,6 +57,7 @@ export default function App() {
     const c = new CatoClient(address, extra.pairingToken ?? "changeme", {
       onWelcome: (ps, meta) => {
         setConnected(true); setConnectingTo(undefined); setProjects(ps);
+        void fetchFolders(address).then((f) => f && setFolders(f)); // for the "start agent" picker
         // Learn identity (stable id + name) and dedupe by id (handles changed IPs).
         setMachines((prev) => {
           const next = applyIdentity(prev, address, { id: meta.machineId, host: meta.host, platform: meta.platform });
@@ -225,7 +227,7 @@ export default function App() {
 
       <ApprovalDetailSheet approval={detail} onClose={() => setDetail(null)} onResolve={resolveApproval} />
       <MultiChoiceSheet question={question} onClose={() => setQuestion(null)} onAnswer={answerQuestion} />
-      {startOpen && <StartAgentSheet projects={projects} onClose={() => setStartOpen(false)} onStart={startAgent} />}
+      {startOpen && <StartAgentSheet folders={folders.folders} root={folders.root} onClose={() => setStartOpen(false)} onStart={startAgent} />}
 
       <SettingsSheet
         open={settingsOpen} onClose={() => setSettingsOpen(false)}
