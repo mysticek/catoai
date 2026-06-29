@@ -9,7 +9,7 @@
  * spawned by Cato (`cato_*`) are managed by the spawn/recovery path.
  */
 
-import { join, basename } from "node:path";
+import { join, basename, resolve, sep } from "node:path";
 import { existsSync } from "node:fs";
 import { ulid } from "ulid";
 import type { AgentQuestion } from "@cato/shared";
@@ -181,7 +181,10 @@ export class AgentManager {
   async spawnForProject(agentKind: string, projectPath: string, task?: string): Promise<SpawnResult> {
     const profile = PROFILES[agentKind];
     if (!profile) return { ok: false, reason: `nepoznám agenta ${agentKind}` };
-    const cwd = join(this.#workspaceRoot, projectPath);
+    // Sandbox: the spawn directory must stay under the workspace root (refuse ../ escapes).
+    const root = resolve(this.#workspaceRoot);
+    const cwd = resolve(root, projectPath);
+    if (cwd !== root && !cwd.startsWith(root + sep)) return { ok: false, reason: `cesta mimo workspace` };
     if (!existsSync(cwd)) return { ok: false, reason: `nenašiel som priečinok ${projectPath}` };
     const project = basename(projectPath) || basename(this.#workspaceRoot);
 

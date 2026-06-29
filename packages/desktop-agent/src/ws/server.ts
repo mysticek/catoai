@@ -26,6 +26,7 @@ import {
   type ServerMessage,
 } from "@cato/shared";
 import { agentKeys } from "../util/keys.js";
+import { hookSecret } from "../util/hook-secret.js";
 import type { Config } from "../config.js";
 import type { EventBus } from "../bus/event-bus.js";
 import type { Orchestrator } from "../orchestrator/orchestrator.js";
@@ -96,7 +97,7 @@ export class WsServer {
     // endpoint (agents POST tool-call approvals here).
     const http = createServer((req, res) => this.#onHttp(req, res));
     this.#http = http;
-    const wss = new WebSocketServer({ server: http });
+    const wss = new WebSocketServer({ server: http, maxPayload: 8 * 1024 * 1024 });
     this.#wss = wss;
 
     wss.on("connection", (socket, req) => this.#onConnection(socket, req));
@@ -174,15 +175,21 @@ export class WsServer {
       return;
     }
     // The PreToolUse hook is the local agent (Claude) asking permission — it must come
-    // from this machine. Reject LAN callers so nobody can inject fake approvals.
+    // from this machine AND carry the per-run hook secret (so other local processes can't
+    // inject fake approvals).
     if (isHook) {
-      const remote = req.socket.remoteAddress ?? "";
-      const local = remote === "127.0.0.1" || remote === "::1" || remote.endsWith(":127.0.0.1");
-      if (!local) { res.writeHead(403).end(); return; }
+      if (!isLoopback(req.socket.remoteAddress ?? "")) { res.writeHead(403).end(); return; }
+      if (url.searchParams.get("s") !== hookSecret()) { res.writeHead(403).end(); return; }
     }
+    // Cap the request body so an unauthenticated caller can't exhaust memory.
     let body = "";
-    req.on("data", (c) => (body += c));
+    let tooBig = false;
+    req.on("data", (c) => {
+      body += c;
+      if (body.length > 8 * 1024 * 1024) { tooBig = true; req.destroy(); }
+    });
     req.on("end", async () => {
+      if (tooBig) { try { res.writeHead(413).end(); } catch { /* already destroyed */ } return; }
       // Create a folder under the workspace root (sandboxed).
       if (isMkdir) {
         if (!this.#authedHttp(req, url)) { res.writeHead(403).end(JSON.stringify({ error: "unauthorized" })); return; }
@@ -290,28 +297,6 @@ export class WsServer {
     const ip = req?.socket.remoteAddress ?? "?";
     socket.on("close", () => { this.#authed.delete(socket); this.#sessionKeys.delete(socket); });
 
-    // Rate-limit + "must run setup" gate, shared by plaintext and encrypted handshakes.
-    const gateOk = (): boolean => {
-      const rec = this.#authFails.get(ip);
-      if (rec && rec.until > Date.now()) {
-        send(socket, frame("error", { code: "rate_limited", message: "too many attempts, try again shortly" }));
-        socket.close();
-        return false;
-      }
-      if (!this.#secured) {
-        send(socket, frame("error", { code: "not_set_up", message: "Run 'cato setup' on the desktop to secure it" }));
-        socket.close();
-        return false;
-      }
-      return true;
-    };
-    const badToken = (): void => {
-      const rec = this.#authFails.get(ip);
-      const n = (rec?.n ?? 0) + 1;
-      this.#authFails.set(ip, { n, until: n >= 5 ? Date.now() + 30_000 : 0 });
-      send(socket, frame("error", { code: "unauthorized", message: "bad token" }));
-      socket.close();
-    };
     const finishAuth = (replyTo: string, sessionKey?: string): void => {
       this.#authFails.delete(ip);
       authenticated = true;
@@ -325,20 +310,44 @@ export class WsServer {
       for (const approval of this.#approvals.list()) this.#emit(socket, frame("approval.request", { approval }));
       void this.#pushInitialStatus(socket);
     };
+    // Evaluate the token FIRST: a correct token always gets in (and clears any lockout);
+    // a wrong one is rate-limited. So an attacker on the same NAT can't lock out the owner.
+    const tryAuth = (tokenOk: boolean, replyTo: string, sessionKey?: string): void => {
+      if (!this.#secured) {
+        send(socket, frame("error", { code: "not_set_up", message: "Run 'cato setup' on the desktop to secure it" }));
+        socket.close();
+        return;
+      }
+      if (tokenOk) return finishAuth(replyTo, sessionKey);
+      const rec = this.#authFails.get(ip);
+      if (rec && rec.until > Date.now()) {
+        send(socket, frame("error", { code: "rate_limited", message: "too many attempts, try again shortly" }));
+        socket.close();
+        return;
+      }
+      const n = (rec?.n ?? 0) + 1;
+      this.#authFails.set(ip, { n, until: n >= 5 ? Date.now() + 30_000 : 0 });
+      send(socket, frame("error", { code: "unauthorized", message: "bad token" }));
+      socket.close();
+    };
 
     const handle = (msg: ClientMessage): void => {
       switch (msg.type) {
         case "hello": {
-          if (!gateOk()) return;
-          if (msg.payload.token !== this.config.pairingToken) return badToken();
-          finishAuth(msg.id);
+          // Plaintext hello is only allowed on loopback (e.g. the local dashboard). Any
+          // network client MUST use the encrypted secure.hello — so the token is never on
+          // the wire and traffic is always E2E.
+          if (!isLoopback(ip)) {
+            send(socket, frame("error", { code: "encryption_required", message: "use secure.hello (E2E) — plaintext is loopback-only" }));
+            socket.close();
+            return;
+          }
+          tryAuth(msg.payload.token === this.config.pairingToken, msg.id);
           return;
         }
         case "secure.hello": {
-          if (!gateOk()) return;
           const opened = openHandshake<{ token: string }>(msg.payload.sealed, agentKeys().secretKey);
-          if (!opened || opened.payload.token !== this.config.pairingToken) return badToken();
-          finishAuth(msg.id, opened.sessionKey);
+          tryAuth(!!opened && opened.payload.token === this.config.pairingToken, msg.id, opened?.sessionKey);
           return;
         }
         case "ping":
@@ -439,4 +448,9 @@ function frame<T extends ServerMessage["type"]>(
 
 function send(socket: WebSocket, message: ServerMessage): void {
   socket.send(JSON.stringify(message));
+}
+
+/** True for loopback peers (the local dashboard / the PreToolUse hook). */
+function isLoopback(remote: string): boolean {
+  return remote === "127.0.0.1" || remote === "::1" || remote === "::ffff:127.0.0.1" || remote.endsWith(":127.0.0.1");
 }

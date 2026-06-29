@@ -3,13 +3,25 @@
 // (project-scoped — only gates Claude sessions launched in this folder via `cato`,
 // never the user's global claude or other sessions). Idempotent; won't clobber.
 //   node cato-install-hook.mjs <projectDir> <wsPort>
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { homedir } from "node:os";
+import { randomUUID } from "node:crypto";
 
 const dir = process.argv[2] || process.cwd();
 const port = process.argv[3] || "8787";
 const path = join(dir, ".claude", "settings.json");
-const url = `http://127.0.0.1:${port}/hooks/pretooluse`;
+
+// Per-machine hook secret (shared with the agent) so only Cato's own hook — not any other
+// local process — can post approval requests. Matches packages/desktop-agent util/hook-secret.
+const secretFile = join(homedir(), ".cato", "hook-secret");
+let secret;
+try { secret = readFileSync(secretFile, "utf8").trim(); } catch { /* create below */ }
+if (!secret) {
+  secret = randomUUID().replace(/-/g, "");
+  try { mkdirSync(dirname(secretFile), { recursive: true }); writeFileSync(secretFile, secret); chmodSync(secretFile, 0o600); } catch { /* best effort */ }
+}
+const url = `http://127.0.0.1:${port}/hooks/pretooluse?s=${secret}`;
 
 let s = {};
 if (existsSync(path)) {
