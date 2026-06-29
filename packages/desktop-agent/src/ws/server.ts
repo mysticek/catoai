@@ -10,7 +10,8 @@ import { ulid } from "ulid";
 import { friendlyHost } from "../util/host.js";
 import { machineId } from "../util/machine-id.js";
 import { writeFile, unlink } from "node:fs/promises";
-import { readdirSync, mkdirSync } from "node:fs";
+import { readdirSync, mkdirSync, existsSync } from "node:fs";
+import { CONFIG_FILE } from "../config.js";
 import { tmpdir } from "node:os";
 import { join, basename, resolve, sep } from "node:path";
 import {
@@ -38,6 +39,7 @@ export class WsServer {
   #wss: WebSocketServer | undefined;
   #http: Server | undefined;
   #authed = new Set<WebSocket>();
+  #authFails = new Map<string, { n: number; until: number }>(); // per-IP token-attempt lockout
   // Tool-call approvals (from agents' PreToolUse gates) awaiting a human decision.
   readonly #approvals = new ApprovalManager((a) => this.#broadcastApproval(a));
   // Conversational questions an agent is waiting on (answered via question.answer).
@@ -93,7 +95,7 @@ export class WsServer {
     const wss = new WebSocketServer({ server: http });
     this.#wss = wss;
 
-    wss.on("connection", (socket) => this.#onConnection(socket));
+    wss.on("connection", (socket, req) => this.#onConnection(socket, req));
     http.listen(this.config.wsPort, this.config.wsHost, () => {
       console.log(
         `[ws] listening on ws://${this.config.wsHost}:${this.config.wsPort}/v${PROTOCOL_VERSION}` +
@@ -103,6 +105,19 @@ export class WsServer {
 
     // Proactive push: notable events from the bus go to all paired phones unprompted.
     this.bus.onAny((event) => this.#pushEvent(event));
+  }
+
+  /** Secured = the user ran `cato setup` and a real pairing token replaced the default.
+   *  Until then, privileged endpoints are disabled (only /info is public). */
+  get #secured(): boolean {
+    return this.config.pairingToken !== "changeme" && this.config.pairingToken.length >= 6;
+  }
+
+  /** Authorize an HTTP request by the pairing token (header or ?token=). */
+  #authedHttp(req: IncomingMessage, url: URL): boolean {
+    if (!this.#secured) return false;
+    const tok = req.headers["x-cato-token"] ?? url.searchParams.get("token") ?? "";
+    return tok === this.config.pairingToken;
   }
 
   /** Resolve a relative path under the workspace root, refusing any escape (../). */
@@ -118,13 +133,17 @@ export class WsServer {
     // Clean UTF-8 machine name over HTTP — reliable where mDNS TXT mojibakes it.
     if (req.method === "GET" && (req.url === "/info" || req.url === "/v1/info")) {
       res.writeHead(200, { "content-type": "application/json; charset=utf-8" }).end(
-        JSON.stringify({ id: machineId(), host: friendlyHost(), platform: process.platform, version: SERVER_VERSION }),
+        JSON.stringify({
+          id: machineId(), host: friendlyHost(), platform: process.platform, version: SERVER_VERSION,
+          onboarded: existsSync(CONFIG_FILE), secured: this.#secured,
+        }),
       );
       return;
     }
     const url = new URL(req.url ?? "/", "http://localhost");
     // Browse folders under the workspace root (nested) → the "start an agent" picker.
     if (req.method === "GET" && url.pathname === "/folders") {
+      if (!this.#authedHttp(req, url)) { res.writeHead(403).end(JSON.stringify({ error: "unauthorized" })); return; }
       const rel = url.searchParams.get("path") ?? "";
       const dir = this.#resolveInWorkspace(rel);
       let dirs: string[] = [];
@@ -150,11 +169,19 @@ export class WsServer {
       res.writeHead(404).end();
       return;
     }
+    // The PreToolUse hook is the local agent (Claude) asking permission — it must come
+    // from this machine. Reject LAN callers so nobody can inject fake approvals.
+    if (isHook) {
+      const remote = req.socket.remoteAddress ?? "";
+      const local = remote === "127.0.0.1" || remote === "::1" || remote.endsWith(":127.0.0.1");
+      if (!local) { res.writeHead(403).end(); return; }
+    }
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", async () => {
       // Create a folder under the workspace root (sandboxed).
       if (isMkdir) {
+        if (!this.#authedHttp(req, url)) { res.writeHead(403).end(JSON.stringify({ error: "unauthorized" })); return; }
         try {
           const { path } = JSON.parse(body || "{}") as { path?: string };
           const dir = this.#resolveInWorkspace(path ?? "");
@@ -247,8 +274,9 @@ export class WsServer {
     await new Promise<void>((resolve) => this.#http?.close(() => resolve()));
   }
 
-  #onConnection(socket: WebSocket): void {
+  #onConnection(socket: WebSocket, req?: IncomingMessage): void {
     let authenticated = false;
+    const ip = req?.socket.remoteAddress ?? "?";
     socket.on("close", () => this.#authed.delete(socket));
 
     socket.on("message", (raw) => {
@@ -261,11 +289,25 @@ export class WsServer {
 
       switch (msg.type) {
         case "hello": {
+          const rec = this.#authFails.get(ip);
+          if (rec && rec.until > Date.now()) {
+            send(socket, frame("error", { code: "rate_limited", message: "too many attempts, try again shortly" }));
+            socket.close();
+            return;
+          }
+          if (!this.#secured) {
+            send(socket, frame("error", { code: "not_set_up", message: "Run 'cato setup' on the desktop to secure it" }));
+            socket.close();
+            return;
+          }
           if (msg.payload.token !== this.config.pairingToken) {
+            const n = (rec?.n ?? 0) + 1;
+            this.#authFails.set(ip, { n, until: n >= 5 ? Date.now() + 30_000 : 0 });
             send(socket, frame("error", { code: "unauthorized", message: "bad token" }));
             socket.close();
             return;
           }
+          this.#authFails.delete(ip); // success clears the counter
           authenticated = true;
           this.#authed.add(socket);
           send(

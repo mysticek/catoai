@@ -10,15 +10,20 @@ export interface Machine {
   id?: string; // stable agent-generated id — the real identity (dedupe key)
   name?: string; // hostname, learned on connect
   platform?: string; // darwin | linux | win32
+  token?: string; // pairing token (from `cato setup`) — required to connect
   lastSeen?: number;
   discovered?: boolean; // found live on the network via mDNS (not from saved list)
-  online?: boolean; // reachable right now (responded to /info) — drives the status dot
+  online?: boolean; // reachable right now (responded to /info)
+  secured?: boolean; // the machine ran `cato setup` (privileged endpoints enabled)
+  onboarded?: boolean; // config.json exists on the machine
 }
 
 export interface MachineInfo {
   id?: string;
   host?: string;
   platform?: string;
+  secured?: boolean;
+  onboarded?: boolean;
 }
 
 /**
@@ -28,7 +33,7 @@ export interface MachineInfo {
  */
 export function applyIdentity(list: Machine[], address: string, info: MachineInfo): Machine[] {
   if (!info.id) {
-    return upsert(list, { address, name: info.host, platform: info.platform, online: true, lastSeen: Date.now() });
+    return upsert(list, { address, name: info.host, platform: info.platform, secured: info.secured, onboarded: info.onboarded, online: true, lastSeen: Date.now() });
   }
   const prev = list.find((m) => m.id === info.id) ?? list.find((m) => m.address === address);
   const merged: Machine = {
@@ -37,6 +42,8 @@ export function applyIdentity(list: Machine[], address: string, info: MachineInf
     id: info.id,
     name: info.host ?? prev?.name,
     platform: info.platform ?? prev?.platform,
+    secured: info.secured,
+    onboarded: info.onboarded,
     online: true,
     lastSeen: Date.now(),
   };
@@ -95,11 +102,15 @@ const httpBase = (address: string): string =>
 export async function browseFolders(
   address: string,
   path = "",
+  token?: string,
 ): Promise<{ root: string; path: string; dirs: string[] } | null> {
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 2500);
-    const res = await fetch(`${httpBase(address)}/folders?path=${encodeURIComponent(path)}`, { signal: ctrl.signal });
+    const res = await fetch(`${httpBase(address)}/folders?path=${encodeURIComponent(path)}`, {
+      signal: ctrl.signal,
+      headers: token ? { "x-cato-token": token } : undefined,
+    });
     clearTimeout(t);
     if (!res.ok) return null;
     return (await res.json()) as { root: string; path: string; dirs: string[] };
@@ -109,11 +120,11 @@ export async function browseFolders(
 }
 
 /** Create a folder (root-relative path, nested ok). */
-export async function createFolder(address: string, path: string): Promise<boolean> {
+export async function createFolder(address: string, path: string, token?: string): Promise<boolean> {
   try {
     const res = await fetch(`${httpBase(address)}/folders`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...(token ? { "x-cato-token": token } : {}) },
       body: JSON.stringify({ path }),
     });
     return res.ok;

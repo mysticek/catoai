@@ -405,8 +405,13 @@ export function PairScreen({
               <View style={st.machineBody}>
                 <Text style={st.machineName} numberOfLines={1}>{machineLabel(m)}</Text>
                 <View style={st.machineSub}>
-                  {m.online === true && <><Dot color={C.active} glow /><Text style={st.foundText}>Online</Text></>}
-                  {m.online === false && <><Dot color={C.idle} /><Text style={[st.foundText, st.offlineText]}>Offline</Text></>}
+                  {m.online === false ? (
+                    <><Dot color={C.idle} /><Text style={[st.foundText, st.offlineText]}>Offline</Text></>
+                  ) : m.secured === false ? (
+                    <><Dot color={C.waiting} /><Text style={[st.foundText, st.setupText]}>Setup needed</Text></>
+                  ) : m.online === true ? (
+                    <><Dot color={C.active} glow /><Text style={st.foundText}>Online</Text></>
+                  ) : null}
                   <Text style={st.machineAddr} numberOfLines={1}>{m.online !== undefined ? "· " : ""}{m.platform ? `${platformLabel(m.platform)} · ` : ""}{m.address}</Text>
                 </View>
               </View>
@@ -586,6 +591,7 @@ const st = StyleSheet.create({
   machineSub: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 },
   foundText: { color: C.active, fontSize: 12, fontWeight: "600" },
   offlineText: { color: C.textMute },
+  setupText: { color: C.waiting },
   machineAddr: { color: C.textDim, fontFamily: MONO, fontSize: 12, flexShrink: 1 },
   addMachine: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 13, borderRadius: 13, borderWidth: 1, borderColor: tint(C.accent, 0.3), borderStyle: "dashed" },
   addMachineText: { color: C.accent, fontSize: 14, fontWeight: "600" },

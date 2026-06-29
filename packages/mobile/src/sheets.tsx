@@ -5,9 +5,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { C, tint, MONO } from "./theme";
-import { Icon, Pill, Btn, L, BottomSheet, KeyboardSafe } from "./ui";
+import { Icon, Pill, Btn, L, Mono, BottomSheet, KeyboardSafe } from "./ui";
 import type { ApprovalRequest, AgentQuestion } from "./catoClient";
-import { browseFolders, createFolder } from "./machines";
+import { browseFolders, createFolder, machineLabel, type Machine } from "./machines";
 
 type Scope = "once" | "session" | "command";
 
@@ -160,7 +160,7 @@ export function MultiChoiceSheet({ question, onClose, onAnswer }: { question: Ag
   );
 }
 
-export function StartAgentSheet({ address, onClose, onSpawn }: { address: string; onClose: () => void; onSpawn: (path: string, agent: string, task: string) => void }) {
+export function StartAgentSheet({ address, token, onClose, onSpawn }: { address: string; token?: string; onClose: () => void; onSpawn: (path: string, agent: string, task: string) => void }) {
   const [root, setRoot] = useState("");
   const [cwd, setCwd] = useState("");
   const [dirs, setDirs] = useState<string[]>([]);
@@ -172,10 +172,10 @@ export function StartAgentSheet({ address, onClose, onSpawn }: { address: string
 
   const load = useCallback(async (path: string) => {
     setLoading(true);
-    const r = await browseFolders(address, path);
+    const r = await browseFolders(address, path, token);
     if (r) { setRoot(r.root); setCwd(r.path); setDirs(r.dirs); }
     setLoading(false);
-  }, [address]);
+  }, [address, token]);
   useEffect(() => { void load(""); }, [load]);
 
   const crumbs = cwd ? cwd.split("/") : [];
@@ -186,7 +186,7 @@ export function StartAgentSheet({ address, onClose, onSpawn }: { address: string
     const n = newName.trim();
     if (!n) return;
     const p = cwd ? `${cwd}/${n}` : n;
-    if (await createFolder(address, p)) { setNewName(""); setCreating(false); void load(p); }
+    if (await createFolder(address, p, token)) { setNewName(""); setCreating(false); void load(p); }
   };
 
   return (
@@ -256,6 +256,46 @@ export function StartAgentSheet({ address, onClose, onSpawn }: { address: string
           <Icon name="rocket" size={17} color={C.onAccent} />
           <Text style={st.pairBtnText}>Start in {here}</Text>
         </Pressable>
+    </BottomSheet>
+  );
+}
+
+export function TokenSheet({ machine, onClose, onSubmit }: { machine: Machine | null; onClose: () => void; onSubmit: (token: string) => void }) {
+  const [token, setToken] = useState("");
+  if (!machine) return null;
+  return (
+    <BottomSheet onClose={onClose}>
+      <View style={st.askRow}>
+        <View style={st.askLogo}><Icon name="shield" size={14} color={C.onAccent} /></View>
+        <Text style={st.askLabel}>PAIRING TOKEN</Text>
+      </View>
+      <Text style={st.question}>Connect to {machineLabel(machine)}</Text>
+      <Text style={st.tokenHint}>Enter the token shown by <Mono style={st.tokenMono}>cato setup</Mono> on that machine.</Text>
+      <TextInput
+        value={token} onChangeText={setToken} autoFocus autoCapitalize="characters" autoCorrect={false}
+        placeholder="ABCD-EFGH" placeholderTextColor={C.textMute} style={[st.input, st.tokenInput]}
+      />
+      <Pressable onPress={() => { const t = token.trim().toUpperCase(); if (t) { onSubmit(t); } }} style={[st.pairBtn, !token.trim() && st.disabled]}>
+        <Icon name="link" size={17} color={C.onAccent} />
+        <Text style={st.pairBtnText}>Connect</Text>
+      </Pressable>
+    </BottomSheet>
+  );
+}
+
+export function SetupGateSheet({ machine, onClose, onHaveToken }: { machine: Machine | null; onClose: () => void; onHaveToken: () => void }) {
+  if (!machine) return null;
+  return (
+    <BottomSheet onClose={onClose}>
+      <View style={[st.gateIcon, { backgroundColor: tint(C.waiting, 0.14) }]}><Icon name="warning" size={26} color={C.waiting} /></View>
+      <Text style={st.question}>Finish setup on {machineLabel(machine)}</Text>
+      <Text style={st.tokenHint}>This machine isn't secured yet. On the desktop, run:</Text>
+      <View style={st.gateCmd}><Mono style={st.gateCmdText}>cato setup</Mono></View>
+      <Text style={st.tokenHint}>It picks your workspace folder and shows a pairing token. Until then, Cato won't expose anything — not even on your Wi-Fi.</Text>
+      <Pressable onPress={onHaveToken} style={[st.pairBtn, { marginTop: 16 }]}>
+        <Icon name="check" size={17} color={C.onAccent} />
+        <Text style={st.pairBtnText}>I've run it — enter token</Text>
+      </Pressable>
     </BottomSheet>
   );
 }
@@ -337,4 +377,10 @@ const st = StyleSheet.create({
   pairBtn: { height: 54, backgroundColor: C.accent, borderRadius: 15, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   pairBtnText: { color: C.onAccent, fontWeight: "600", fontSize: 16 },
   disabled: { opacity: 0.5 },
+  tokenHint: { color: C.textDim, fontSize: 13.5, lineHeight: 19, marginTop: 8 },
+  tokenMono: { color: C.accent, fontSize: 13 },
+  tokenInput: { marginTop: 14, fontFamily: MONO, fontSize: 16, letterSpacing: 1, textAlign: "center" },
+  gateIcon: { width: 56, height: 56, borderRadius: 16, alignItems: "center", justifyContent: "center", marginBottom: 4 },
+  gateCmd: { backgroundColor: C.black, borderWidth: 1, borderColor: C.border, borderRadius: 10, padding: 13, marginTop: 10 },
+  gateCmdText: { color: C.accent, fontSize: 14 },
 });

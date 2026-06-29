@@ -16,7 +16,7 @@ import { Icon, Pill, L, BottomSheet } from "./src/ui";
 import {
   TalkScreen, ApprovalsScreen, ActivityScreen, ProjectsScreen, PairScreen, TabBar, ListeningOverlay, AppBar, type Tab,
 } from "./src/screens";
-import { ApprovalDetailSheet, MultiChoiceSheet, StartAgentSheet } from "./src/sheets";
+import { ApprovalDetailSheet, MultiChoiceSheet, StartAgentSheet, TokenSheet, SetupGateSheet } from "./src/sheets";
 import { loadMachines, saveMachines, upsert, applyIdentity, fetchMachineInfo, type Machine } from "./src/machines";
 import { useDiscovery } from "./src/discovery";
 
@@ -44,16 +44,18 @@ export default function App() {
   const [detail, setDetail] = useState<ApprovalRequest | null>(null);
   const [startOpen, setStartOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [tokenFor, setTokenFor] = useState<string | null>(null); // address awaiting a token
+  const [gateFor, setGateFor] = useState<string | null>(null); // address that needs `cato setup`
 
   const client = useRef<CatoClient | null>(null);
   const enriched = useRef<Set<string>>(new Set());
   const recorder = useAudioRecorder(REC_OPTIONS);
 
-  const connect = useCallback((address: string) => {
+  const connect = useCallback((address: string, token?: string) => {
     client.current?.close();
     setActive(address);
     setConnectingTo(address);
-    const c = new CatoClient(address, extra.pairingToken ?? "changeme", {
+    const c = new CatoClient(address, token ?? "changeme", {
       onWelcome: (ps, meta) => {
         setConnected(true); setConnectingTo(undefined); setProjects(ps);
         // Learn identity (stable id + name) and dedupe by id (handles changed IPs).
@@ -71,17 +73,35 @@ export default function App() {
         setApprovals((prev) => prev.map((a) => (a.id === id ? { ...a, summary: summary ?? a.summary, suggestions: suggestions ?? a.suggestions } : a))),
       onQuestion: (q) => setQuestion(q),
       onActivity: (e) => setActivity((prev) => [e, ...prev].slice(0, 60)),
-      onError: () => setBusy(false),
+      onError: (code) => {
+        setBusy(false); setConnectingTo(undefined);
+        if (code === "not_set_up") setGateFor(address);
+        else if (code === "unauthorized") setTokenFor(address);
+      },
       onClose: () => { setConnected(false); setConnectingTo(undefined); },
     });
     c.connect();
     client.current = c;
   }, []);
 
+  // Tap a machine → gate on setup, then token, then connect.
+  const handleConnect = useCallback((address: string) => {
+    const m = machines.find((x) => x.address === address);
+    if (m?.secured === false) { setGateFor(address); return; }
+    if (m && !m.token) { setTokenFor(address); return; }
+    connect(address, m?.token);
+  }, [machines, connect]);
+
+  const submitToken = useCallback((address: string, token: string) => {
+    setMachines((prev) => { const next = upsert(prev, { address, token }); void saveMachines(next); return next; });
+    setTokenFor(null);
+    connect(address, token);
+  }, [connect]);
+
   const addMachine = useCallback((address: string) => {
     setMachines((prev) => { const next = upsert(prev, { address }); void saveMachines(next); return next; });
-    connect(address);
-  }, [connect]);
+    handleConnect(address);
+  }, [handleConnect]);
 
   const onRelay = useCallback(() => {
     Alert.alert("Cato Relay · PRO", "Reach your desktop from any network with push notifications, even when the app is closed. Coming soon.");
@@ -192,11 +212,16 @@ export default function App() {
   const pendingCount = approvals.length;
   const hint = locale === "sk" ? "Podrž a hovor · alebo „Cato…“" : "Hold to talk · or “Cato…”";
 
+  const tokenMachine = tokenFor ? allMachines.find((m) => m.address === tokenFor) ?? { address: tokenFor } : null;
+  const gateMachine = gateFor ? allMachines.find((m) => m.address === gateFor) ?? { address: gateFor } : null;
+
   if (!connected) {
     return (
       <SafeAreaView style={s.root}>
         <StatusBar style="light" />
-        <PairScreen machines={allMachines} onConnect={connect} onAdd={addMachine} onRelay={onRelay} connectingTo={connectingTo} />
+        <PairScreen machines={allMachines} onConnect={handleConnect} onAdd={addMachine} onRelay={onRelay} connectingTo={connectingTo} />
+        <TokenSheet machine={tokenMachine} onClose={() => setTokenFor(null)} onSubmit={(t) => tokenFor && submitToken(tokenFor, t)} />
+        <SetupGateSheet machine={gateMachine} onClose={() => setGateFor(null)} onHaveToken={() => { setGateFor(null); setTokenFor(gateFor); }} />
       </SafeAreaView>
     );
   }
@@ -224,7 +249,7 @@ export default function App() {
 
       <ApprovalDetailSheet approval={detail} onClose={() => setDetail(null)} onResolve={resolveApproval} />
       <MultiChoiceSheet question={question} onClose={() => setQuestion(null)} onAnswer={answerQuestion} />
-      {startOpen && <StartAgentSheet address={active} onClose={() => setStartOpen(false)} onSpawn={startAgent} />}
+      {startOpen && <StartAgentSheet address={active} token={machines.find((m) => m.address === active)?.token} onClose={() => setStartOpen(false)} onSpawn={startAgent} />}
 
       <SettingsSheet
         open={settingsOpen} onClose={() => setSettingsOpen(false)}
