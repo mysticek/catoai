@@ -8,6 +8,7 @@ export interface Config {
   embeddingModel: string;
   embeddingDim: number;
   sttBin: string;
+  sttServerUrl: string;
   sttModel: string;
   ffmpegBin: string;
   workspaceRoot: string;
@@ -32,6 +33,7 @@ export function loadConfig(): Config {
     embeddingModel: env("EMBEDDING_MODEL", "bge-m3"),
     embeddingDim: Number(env("EMBEDDING_DIM", "1024")),
     sttBin: env("STT_BIN", "whisper-cli"),
+    sttServerUrl: env("STT_SERVER_URL", "http://127.0.0.1:8088"),
     sttModel: env(
       "STT_MODEL",
       `${process.env.HOME ?? ""}/.cato/models/ggml-large-v3-turbo.bin`,

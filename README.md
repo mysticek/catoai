@@ -13,13 +13,14 @@ Spec: [`docs/`](./docs) — [PROJECT](./docs/PROJECT.md) · [ARCHITECTURE](./doc
 ## Install (macOS)
 
 ```bash
-git clone <repo> cato && cd cato
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/mysticek/catoai/main/install.sh | bash
 ```
 
-The installer sets up everything: tmux · ffmpeg · whisper.cpp · Ollama + models
-(bge-m3, qwen3:4b) · whisper large-v3-turbo · Postgres+pgvector (Docker) · builds the
-agent · and links the `cato` launcher onto your PATH. Re-running is safe (idempotent).
+(or clone and run `./install.sh`). One command sets up everything: tmux · ffmpeg ·
+whisper.cpp · Ollama + models (bge-m3, gemma3:4b) · whisper large-v3-turbo ·
+Postgres+pgvector (Docker) · builds the agent · links the `cato` launcher · and configures
+the always-on agent (left **inactive** — enable with `npm run daemon:on`). Idempotent.
+*(A Homebrew tap is planned.)*
 
 Prereqs it expects: **Homebrew**, **Node ≥20**, **Docker Desktop**, and at least one
 coding agent — **Claude Code** (`claude`) and/or **Codex** (`codex`).
@@ -27,9 +28,10 @@ coding agent — **Claude Code** (`claude`) and/or **Codex** (`codex`).
 ## Use it
 
 ```bash
-npm start          # 1. start the Cato brain (always-on desktop agent)
-cato               # 2. launch your agent in any project — it runs in a tmux
-                   #    session Cato auto-watches. `cato codex` for Codex.
+cato                  # launch your agent in any project — it runs in a tmux session
+                      # Cato auto-watches. `cato codex` for Codex.
+npm run daemon:on     # (optional) run the Cato brain always-on (auto-start on login)
+# or, foreground:  npm start
 ```
 
 Work normally; detach (Ctrl-b d) and walk away. On your phone (same Wi-Fi), open the

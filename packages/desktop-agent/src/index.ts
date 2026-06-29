@@ -14,7 +14,7 @@ import { Orchestrator, type WorkerControl } from "./orchestrator/orchestrator.js
 import { AgentManager } from "./agents/manager.js";
 import { RecoveryMonitor } from "./recovery/monitor.js";
 import { WsServer } from "./ws/server.js";
-import { createStt } from "./voice/stt.js";
+import { createStt, ensureWhisperServer } from "./voice/stt.js";
 import { createLlm } from "./voice/llm.js";
 import { sendLine, sendKey } from "./tmux/tmux.js";
 
@@ -52,7 +52,9 @@ async function main(): Promise<void> {
   const recovery = new RecoveryMonitor(memory, control, { onLog: (m) => console.log(m) });
   recovery.start();
 
-  const stt = createStt(config.sttBin, config.sttModel);
+  // Keep whisper warm (model loaded) so STT is ~1s instead of a cold start each call.
+  await ensureWhisperServer(config.sttModel, config.sttServerUrl).catch(() => false);
+  const stt = await createStt({ bin: config.sttBin, model: config.sttModel, serverUrl: config.sttServerUrl });
   console.log(`[cato] STT: ${stt ? stt.kind : "disabled (no whisper model)"}`);
 
   const ws = new WsServer(config, bus, orchestrator, stt ?? undefined, llm ?? undefined);
