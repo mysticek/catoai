@@ -4,7 +4,7 @@
  * four tabs (Talk / Approvals / Activity / Projects). Implements Cato.dc.html.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as Speech from "expo-speech";
 import Constants from "expo-constants";
@@ -47,18 +47,25 @@ export default function App() {
   const [tokenFor, setTokenFor] = useState<string | null>(null); // address awaiting a token
   const [gateFor, setGateFor] = useState<string | null>(null); // address that needs `cato setup`
 
+  const [reconnecting, setReconnecting] = useState(false);
   const client = useRef<CatoClient | null>(null);
   const enriched = useRef<Set<string>>(new Set());
+  const reconnect = useRef<{ address: string; token?: string; attempts: number } | null>(null);
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recorder = useAudioRecorder(REC_OPTIONS);
 
   const connect = useCallback((address: string, token?: string) => {
+    if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
     client.current?.close();
     setActive(address);
     setConnectingTo(address);
+    // Remember the target so we can auto-reconnect; keep the attempt count for the same machine.
+    reconnect.current = { address, token, attempts: reconnect.current?.address === address ? reconnect.current.attempts : 0 };
     const pub = machines.find((m) => m.address === address)?.pub; // E2E when we know the key
     const c = new CatoClient(address, token ?? "changeme", {
       onWelcome: (ps, meta) => {
-        setConnected(true); setConnectingTo(undefined); setProjects(ps);
+        setConnected(true); setConnectingTo(undefined); setReconnecting(false); setProjects(ps);
+        if (reconnect.current) reconnect.current.attempts = 0;
         // Learn identity (stable id + name) and dedupe by id (handles changed IPs).
         setMachines((prev) => {
           const next = applyIdentity(prev, address, { id: meta.machineId, host: meta.host, platform: meta.platform });
@@ -79,11 +86,27 @@ export default function App() {
         if (code === "not_set_up") setGateFor(address);
         else if (code === "unauthorized") setTokenFor(address);
       },
-      onClose: () => { setConnected(false); setConnectingTo(undefined); },
+      onClose: () => {
+        setConnected(false); setConnectingTo(undefined);
+        // Auto-reconnect with backoff while this is still the active target.
+        if (reconnect.current?.address === address) {
+          reconnect.current.attempts += 1;
+          const delay = Math.min(15_000, 1_000 * 2 ** (reconnect.current.attempts - 1));
+          setReconnecting(true);
+          reconnectTimer.current = setTimeout(() => connect(address, token), delay);
+        }
+      },
     }, pub);
     c.connect();
     client.current = c;
   }, [machines]);
+
+  // Stop auto-reconnecting (user picked another machine / closed).
+  const stopReconnect = useCallback(() => {
+    if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+    reconnect.current = null;
+    setReconnecting(false);
+  }, []);
 
   // Tap a machine → gate on setup, then token, then connect.
   const handleConnect = useCallback((address: string) => {
@@ -220,7 +243,14 @@ export default function App() {
     return (
       <SafeAreaView style={s.root}>
         <StatusBar style="light" />
-        <PairScreen machines={allMachines} onConnect={handleConnect} onAdd={addMachine} onRelay={onRelay} connectingTo={connectingTo} />
+        {reconnecting && (
+          <View style={s.reconnectBar}>
+            <ActivityIndicator color={C.accent} />
+            <Text style={s.reconnectText}>Reconnecting…</Text>
+            <Pressable onPress={stopReconnect} hitSlop={8}><Text style={s.reconnectStop}>Stop</Text></Pressable>
+          </View>
+        )}
+        <PairScreen machines={allMachines} onConnect={(a) => { stopReconnect(); handleConnect(a); }} onAdd={addMachine} onRelay={onRelay} connectingTo={connectingTo} />
         <TokenSheet machine={tokenMachine} onClose={() => setTokenFor(null)} onSubmit={(t) => tokenFor && submitToken(tokenFor, t)} />
         <SetupGateSheet machine={gateMachine} onClose={() => setGateFor(null)} onHaveToken={() => { setGateFor(null); setTokenFor(gateFor); }} />
       </SafeAreaView>
@@ -313,6 +343,9 @@ function SettingsSheet({
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
+  reconnectBar: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: tint(C.accent, 0.12), borderBottomWidth: 1, borderBottomColor: tint(C.accent, 0.25) },
+  reconnectText: { color: C.accent, fontSize: 13, fontWeight: "600", flex: 1 },
+  reconnectStop: { color: C.textDim, fontSize: 13, fontWeight: "600" },
   gear: { paddingHorizontal: 18, paddingTop: 6 },
   backdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.55)" },
   sheet: { position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: "#121317", borderTopLeftRadius: 26, borderTopRightRadius: 26, borderWidth: 1, borderColor: C.borderStrong, padding: 22, paddingBottom: 34 },
