@@ -17,7 +17,7 @@ import {
   TalkScreen, ApprovalsScreen, ActivityScreen, ProjectsScreen, PairScreen, TabBar, ListeningOverlay, AppBar, type Tab,
 } from "./src/screens";
 import { ApprovalDetailSheet, MultiChoiceSheet, StartAgentSheet } from "./src/sheets";
-import { loadMachines, saveMachines, upsert, fetchMachineInfo, type Machine } from "./src/machines";
+import { loadMachines, saveMachines, upsert, applyIdentity, fetchMachineInfo, type Machine } from "./src/machines";
 import { useDiscovery } from "./src/discovery";
 
 const extra = (Constants.expoConfig?.extra ?? {}) as { desktopWsUrl?: string; pairingToken?: string };
@@ -56,9 +56,9 @@ export default function App() {
     const c = new CatoClient(address, extra.pairingToken ?? "changeme", {
       onWelcome: (ps, meta) => {
         setConnected(true); setConnectingTo(undefined); setProjects(ps);
-        // Learn the machine's real name + platform and remember it.
+        // Learn identity (stable id + name) and dedupe by id (handles changed IPs).
         setMachines((prev) => {
-          const next = upsert(prev, { address, name: meta.host, platform: meta.platform, lastSeen: Date.now() });
+          const next = applyIdentity(prev, address, { id: meta.machineId, host: meta.host, platform: meta.platform });
           void saveMachines(next);
           return next;
         });
@@ -87,19 +87,17 @@ export default function App() {
     Alert.alert("Cato Relay · PRO", "Reach your desktop from any network with push notifications, even when the app is closed. Coming soon.");
   }, []);
 
-  // Load saved machines on mount; auto-connect to the most recent one.
+  // Load saved machines on mount. No auto-connect — the user picks from the list
+  // (which fills in name + Online status via mDNS + /info before they choose).
   useEffect(() => {
     let mounted = true;
     (async () => {
       let list = await loadMachines();
       if (list.length === 0 && extra.desktopWsUrl) list = [{ address: extra.desktopWsUrl }];
-      if (!mounted) return;
-      setMachines(list);
-      const recent = [...list].sort((a, b) => (b.lastSeen ?? 0) - (a.lastSeen ?? 0))[0];
-      if (recent) connect(recent.address);
+      if (mounted) setMachines(list);
     })();
     return () => { mounted = false; client.current?.close(); };
-  }, [connect]);
+  }, []);
 
   const onPressIn = useCallback(async () => {
     try {
@@ -150,13 +148,25 @@ export default function App() {
   // Live mDNS discovery while on the Pair screen; merge with the saved list.
   const discovered = useDiscovery(!connected);
   const allMachines = useMemo(() => {
-    const map = new Map<string, Machine>();
-    for (const m of machines) map.set(m.address, m);
+    const byAddr = new Map<string, Machine>();
+    for (const m of machines) byAddr.set(m.address, m);
     for (const d of discovered) {
-      const ex = map.get(d.address);
-      map.set(d.address, { ...ex, ...d, discovered: true, name: ex?.name ?? d.name });
+      const ex = byAddr.get(d.address);
+      byAddr.set(d.address, { ...ex, ...d, discovered: true, name: ex?.name ?? d.name, id: ex?.id ?? d.id });
     }
-    return [...map.values()];
+    // Collapse entries that share a stable id (same machine seen at two IPs).
+    const byId = new Map<string, Machine>();
+    const out: Machine[] = [];
+    for (const m of byAddr.values()) {
+      if (m.id && byId.has(m.id)) {
+        const keep = byId.get(m.id)!;
+        if (m.online && !keep.online) Object.assign(keep, m);
+        continue;
+      }
+      if (m.id) byId.set(m.id, m);
+      out.push(m);
+    }
+    return out;
   }, [machines, discovered]);
 
   // Re-check reachability each time we land on the Pair screen.
@@ -170,9 +180,9 @@ export default function App() {
       enriched.current.add(m.address);
       fetchMachineInfo(m.address).then((info) => {
         setMachines((prev) => {
-          const next = upsert(prev, info?.host
-            ? { address: m.address, name: info.host, platform: info.platform, online: true }
-            : { address: m.address, online: false });
+          const next = info
+            ? applyIdentity(prev, m.address, info) // dedupes by stable id
+            : upsert(prev, { address: m.address, online: false });
           void saveMachines(next);
           return next;
         });

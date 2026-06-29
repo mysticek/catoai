@@ -49,7 +49,7 @@ export interface ActivityEvent {
 export type Target = { project?: string };
 
 export interface CatoClientHandlers {
-  onWelcome?: (projects: ProjectStatus[], meta: { host?: string; platform?: string }) => void;
+  onWelcome?: (projects: ProjectStatus[], meta: { host?: string; platform?: string; machineId?: string }) => void;
   onTranscript?: (text: string, final: boolean) => void;
   onSpeak?: (text: string, locale: string) => void;
   onStatus?: (projects: ProjectStatus[]) => void;
@@ -140,6 +140,7 @@ export class CatoClient {
         return this.handlers.onWelcome?.((p.projects as ProjectStatus[]) ?? [], {
           host: p.host as string | undefined,
           platform: p.platform as string | undefined,
+          machineId: p.machineId as string | undefined,
         });
       case "transcript.partial":
         return this.handlers.onTranscript?.(String(p.text ?? ""), false);

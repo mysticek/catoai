@@ -3,6 +3,7 @@
  * (service type `_cato._tcp`) instead of typing an IP. The mobile app browses for it.
  */
 import { Bonjour } from "bonjour-service";
+import { machineId } from "../util/machine-id.js";
 
 // `host` must be ASCII — mDNS TXT/service names get mojibake'd by some clients.
 export function advertiseCato(port: number, host: string, version: string): () => void {
@@ -14,7 +15,7 @@ export function advertiseCato(port: number, host: string, version: string): () =
       type: "cato", // → _cato._tcp
       protocol: "tcp",
       port,
-      txt: { v: version, host, path: "/v1" },
+      txt: { v: version, host, path: "/v1", id: machineId() },
     });
     console.log(`[cato] advertising _cato._tcp on :${port} as "Cato - ${host}"`);
   } catch (err) {

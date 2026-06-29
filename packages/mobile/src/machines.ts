@@ -6,12 +6,41 @@
 import * as FileSystem from "expo-file-system/legacy";
 
 export interface Machine {
-  address: string; // ws URL — the stable id
+  address: string; // ws URL — may change with DHCP
+  id?: string; // stable agent-generated id — the real identity (dedupe key)
   name?: string; // hostname, learned on connect
   platform?: string; // darwin | linux | win32
   lastSeen?: number;
   discovered?: boolean; // found live on the network via mDNS (not from saved list)
   online?: boolean; // reachable right now (responded to /info) — drives the status dot
+}
+
+export interface MachineInfo {
+  id?: string;
+  host?: string;
+  platform?: string;
+}
+
+/**
+ * Record a machine's identity at the current address, deduping by stable id so a machine
+ * that changed IP updates in place instead of piling up duplicates. Removes any prior
+ * entry with the same id OR the same address, then keeps a single merged record.
+ */
+export function applyIdentity(list: Machine[], address: string, info: MachineInfo): Machine[] {
+  if (!info.id) {
+    return upsert(list, { address, name: info.host, platform: info.platform, online: true, lastSeen: Date.now() });
+  }
+  const prev = list.find((m) => m.id === info.id) ?? list.find((m) => m.address === address);
+  const merged: Machine = {
+    ...prev,
+    address,
+    id: info.id,
+    name: info.host ?? prev?.name,
+    platform: info.platform ?? prev?.platform,
+    online: true,
+    lastSeen: Date.now(),
+  };
+  return [...list.filter((m) => m.id !== info.id && m.address !== address), merged];
 }
 
 const FILE = FileSystem.documentDirectory + "cato-machines.json";
@@ -44,7 +73,7 @@ export function upsert(list: Machine[], m: Machine): Machine[] {
 }
 
 /** Fetch a machine's clean UTF-8 identity over HTTP (reliable, unlike mDNS TXT). */
-export async function fetchMachineInfo(address: string): Promise<{ host?: string; platform?: string } | null> {
+export async function fetchMachineInfo(address: string): Promise<MachineInfo | null> {
   const base = address.replace(/^ws(s?):\/\//i, "http$1://").replace(/\/v1\/?$/i, "");
   try {
     const ctrl = new AbortController();
@@ -52,7 +81,7 @@ export async function fetchMachineInfo(address: string): Promise<{ host?: string
     const res = await fetch(`${base}/info`, { signal: ctrl.signal });
     clearTimeout(t);
     if (!res.ok) return null;
-    return (await res.json()) as { host?: string; platform?: string };
+    return (await res.json()) as MachineInfo;
   } catch {
     return null;
   }

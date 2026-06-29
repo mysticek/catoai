@@ -79,7 +79,7 @@ export interface ProjectStatus {
 export type ServerMessage =
   | Envelope<
       "welcome",
-      { sessionId: string; serverVersion: string; projects: ProjectStatus[]; host?: string; platform?: string }
+      { sessionId: string; serverVersion: string; projects: ProjectStatus[]; host?: string; platform?: string; machineId?: string }
     >
   | Envelope<"transcript.partial", { text: string }>
   | Envelope<"transcript.final", { text: string; locale: string }>

@@ -8,6 +8,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { ulid } from "ulid";
 import { friendlyHost } from "../util/host.js";
+import { machineId } from "../util/machine-id.js";
 import { writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, basename } from "node:path";
@@ -102,7 +103,7 @@ export class WsServer {
     // Clean UTF-8 machine name over HTTP — reliable where mDNS TXT mojibakes it.
     if (req.method === "GET" && (req.url === "/info" || req.url === "/v1/info")) {
       res.writeHead(200, { "content-type": "application/json; charset=utf-8" }).end(
-        JSON.stringify({ host: friendlyHost(), platform: process.platform, version: SERVER_VERSION }),
+        JSON.stringify({ id: machineId(), host: friendlyHost(), platform: process.platform, version: SERVER_VERSION }),
       );
       return;
     }
@@ -219,7 +220,7 @@ export class WsServer {
             socket,
             frame(
               "welcome",
-              { sessionId: ulid(), serverVersion: SERVER_VERSION, projects: [], host: friendlyHost(), platform: process.platform },
+              { sessionId: ulid(), serverVersion: SERVER_VERSION, projects: [], host: friendlyHost(), platform: process.platform, machineId: machineId() },
               msg.id,
             ),
           );
