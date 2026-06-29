@@ -98,7 +98,6 @@ export function TalkScreen({
   const quiet = projects.filter((p) => p.state === "active" || p.state === "idle");
   return (
     <View style={L.fill}>
-      <AppBar linked />
       <ScrollView style={L.fill} contentContainerStyle={st.talkBody} showsVerticalScrollIndicator={false}>
         <SectionLabel right={
           <Pressable onPress={onGoApprovals} style={st.linkBtn}>
