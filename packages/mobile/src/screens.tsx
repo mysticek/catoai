@@ -28,7 +28,7 @@ const tinted = (color: string, border = 0.3, bg = 0.12) => ({ borderColor: tint(
 
 // ----- shared chrome ----------------------------------------------------------
 
-export function AppBar({ linked }: { linked: boolean }) {
+export function AppBar({ linked, onSettings }: { linked: boolean; onSettings?: () => void }) {
   const c = linked ? C.active : C.attention;
   return (
     <View style={st.appBar}>
@@ -36,9 +36,14 @@ export function AppBar({ linked }: { linked: boolean }) {
         <View style={st.logo}><Icon name="shield" size={15} color={C.onAccent} /></View>
         <Text style={st.brand}>Cato</Text>
       </View>
-      <View style={[st.linkPill, tinted(c, 0.25, 0.12)]}>
-        <Dot color={c} glow={linked} />
-        <Text style={[st.linkText, { color: c }]}>{linked ? "Desktop linked" : "Offline"}</Text>
+      <View style={st.appBarRight}>
+        <View style={[st.linkPill, tinted(c, 0.25, 0.12)]}>
+          <Dot color={c} glow={linked} />
+          <Text style={[st.linkText, { color: c }]}>{linked ? "Desktop linked" : "Offline"}</Text>
+        </View>
+        {onSettings && (
+          <Pressable onPress={onSettings} hitSlop={10}><Icon name="gear" size={20} color={C.textMute} /></Pressable>
+        )}
       </View>
     </View>
   );
@@ -470,6 +475,7 @@ const st = StyleSheet.create({
   brandRow: { flexDirection: "row", alignItems: "center", gap: 9 },
   logo: { width: 26, height: 26, borderRadius: 8, backgroundColor: C.accent, alignItems: "center", justifyContent: "center" },
   brand: { color: C.text, fontSize: 18, fontWeight: "700", letterSpacing: -0.3 },
+  appBarRight: { flexDirection: "row", alignItems: "center", gap: 14 },
   linkPill: { flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 11, paddingVertical: 6, borderRadius: R.pill, borderWidth: 1 },
   linkText: { fontSize: 12, fontWeight: "600" },
   titleWrap: { paddingHorizontal: S.xl, paddingTop: S.sm, paddingBottom: 14 },

@@ -209,10 +209,7 @@ export default function App() {
 
       {tab === "talk" && (
         <View style={L.fill}>
-          <View style={L.row}>
-            <View style={L.flex1}><AppBar linked={connected} /></View>
-            <Pressable onPress={() => setSettingsOpen(true)} hitSlop={10} style={s.gear}><Icon name="gear" size={20} color={C.textMute} /></Pressable>
-          </View>
+          <AppBar linked={connected} onSettings={() => setSettingsOpen(true)} />
           <TalkScreen
             projects={projects} exchange={exchange} recording={recording} busy={busy} hint={hint}
             onPressIn={onPressIn} onPressOut={onPressOut} onOpenProject={openProject}
