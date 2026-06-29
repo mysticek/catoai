@@ -4,18 +4,19 @@
  */
 import { Bonjour } from "bonjour-service";
 
+// `host` must be ASCII — mDNS TXT/service names get mojibake'd by some clients.
 export function advertiseCato(port: number, host: string, version: string): () => void {
   let bonjour: Bonjour | undefined;
   try {
     bonjour = new Bonjour();
     bonjour.publish({
-      name: `Cato · ${host}`,
+      name: `Cato - ${host}`,
       type: "cato", // → _cato._tcp
       protocol: "tcp",
       port,
       txt: { v: version, host, path: "/v1" },
     });
-    console.log(`[cato] advertising _cato._tcp on :${port} as "Cato · ${host}"`);
+    console.log(`[cato] advertising _cato._tcp on :${port} as "Cato - ${host}"`);
   } catch (err) {
     console.log(`[cato] mDNS advertise failed (discovery off): ${(err as Error).message}`);
   }

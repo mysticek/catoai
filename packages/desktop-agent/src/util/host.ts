@@ -22,3 +22,15 @@ export function friendlyHost(): string {
   cached = name;
   return name;
 }
+
+/** ASCII-only variant for mDNS (TXT/service names mojibake non-ASCII in many clients,
+ *  e.g. react-native-zeroconf decodes TXT as Latin-1). The full UTF-8 name still goes
+ *  over the WebSocket `welcome`, which RN decodes correctly. */
+export function asciiHost(): string {
+  return friendlyHost()
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "") // strip combining accents
+    .replace(/[^\x20-\x7e]/g, "") // drop any remaining non-ASCII
+    .replace(/\s+/g, " ")
+    .trim();
+}

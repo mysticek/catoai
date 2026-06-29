@@ -18,7 +18,7 @@ import { createStt, ensureWhisperServer } from "./voice/stt.js";
 import { createLlm } from "./voice/llm.js";
 import { sendLine, sendKey } from "./tmux/tmux.js";
 import { advertiseCato } from "./discovery/advertise.js";
-import { friendlyHost } from "./util/host.js";
+import { friendlyHost, asciiHost } from "./util/host.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -68,7 +68,7 @@ async function main(): Promise<void> {
   manager.start();
 
   // Announce on the LAN so phones discover this machine automatically (no IP typing).
-  const stopAdvertise = advertiseCato(config.wsPort, friendlyHost(), "0.0.0");
+  const stopAdvertise = advertiseCato(config.wsPort, asciiHost(), "0.0.0");
 
   console.log("[cato] desktop agent up. Cato remembers. Workers implement.");
 
