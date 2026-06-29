@@ -55,6 +55,9 @@ const ICON: Record<string, IoniconName> = {
   apple: "logo-apple",
   laptop: "laptop",
   windows: "logo-windows",
+  folder: "folder",
+  folderAdd: "add",
+  home: "home",
 };
 
 export function Icon({ name, size = 18, color = C.text }: { name: keyof typeof ICON; size?: number; color?: string }) {

@@ -2,11 +2,12 @@
  * Cato modal sheets — approval detail (+ trust scopes + deny-with-reason),
  * multi-choice prompt, and start-an-agent. StyleSheet only; App wires the actions.
  */
-import { useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useState, useEffect, useCallback } from "react";
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { C, tint, MONO } from "./theme";
 import { Icon, Pill, Btn, L } from "./ui";
 import type { ApprovalRequest, AgentQuestion } from "./catoClient";
+import { browseFolders, createFolder } from "./machines";
 
 type Scope = "once" | "session" | "command";
 
@@ -163,10 +164,35 @@ export function MultiChoiceSheet({ question, onClose, onAnswer }: { question: Ag
   );
 }
 
-export function StartAgentSheet({ folders, root, onClose, onStart }: { folders: string[]; root: string; onClose: () => void; onStart: (project: string, agent: string, task: string) => void }) {
-  const [project, setProject] = useState(folders[0] ?? "");
+export function StartAgentSheet({ address, onClose, onSpawn }: { address: string; onClose: () => void; onSpawn: (path: string, agent: string, task: string) => void }) {
+  const [root, setRoot] = useState("");
+  const [cwd, setCwd] = useState("");
+  const [dirs, setDirs] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
   const [agent, setAgent] = useState("claude-code");
   const [task, setTask] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+
+  const load = useCallback(async (path: string) => {
+    setLoading(true);
+    const r = await browseFolders(address, path);
+    if (r) { setRoot(r.root); setCwd(r.path); setDirs(r.dirs); }
+    setLoading(false);
+  }, [address]);
+  useEffect(() => { void load(""); }, [load]);
+
+  const crumbs = cwd ? cwd.split("/") : [];
+  const rootName = root.replace(/\/+$/, "").split("/").pop() || "~";
+  const here = crumbs.length ? crumbs[crumbs.length - 1] : rootName;
+
+  const create = async () => {
+    const n = newName.trim();
+    if (!n) return;
+    const p = cwd ? `${cwd}/${n}` : n;
+    if (await createFolder(address, p)) { setNewName(""); setCreating(false); void load(p); }
+  };
+
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={st.backdrop} onPress={onClose} />
@@ -174,17 +200,47 @@ export function StartAgentSheet({ folders, root, onClose, onStart }: { folders: 
         <View style={st.grabber} />
         <Text style={[st.question, st.startTitle]}>Start an agent</Text>
 
-        <Text style={st.label}>PROJECT FOLDER{root ? `  ·  ${root}` : ""}</Text>
-        {folders.length === 0 ? (
-          <Text style={st.startEmpty}>No project folders found in {root || "the workspace"}. Create one there on your desktop first.</Text>
-        ) : (
-          <View style={st.tagWrap}>
-            {folders.map((f) => (
-              <Pressable key={f} onPress={() => setProject(f)} style={[st.tag, project === f && st.tagOn]}>
-                <Text style={[st.tagText, project === f && st.tagTextOn]}>{f}</Text>
+        <Text style={st.label}>FOLDER</Text>
+        {/* breadcrumb */}
+        <View style={st.crumbs}>
+          <Pressable onPress={() => void load("")} style={st.crumb}><Icon name="home" size={13} color={cwd ? C.accent : C.text} /><Text style={[st.crumbText, !cwd && st.crumbHere]}>{rootName}</Text></Pressable>
+          {crumbs.map((c, i) => (
+            <View key={i} style={st.crumb}>
+              <Icon name="caret" size={12} color={C.textFaint} />
+              <Pressable onPress={() => void load(crumbs.slice(0, i + 1).join("/"))}>
+                <Text style={[st.crumbText, i === crumbs.length - 1 && st.crumbHere]}>{c}</Text>
               </Pressable>
-            ))}
+            </View>
+          ))}
+        </View>
+
+        {/* folder list */}
+        <ScrollView style={st.browser} keyboardShouldPersistTaps="handled">
+          {loading ? (
+            <ActivityIndicator color={C.accent} style={{ marginVertical: 16 }} />
+          ) : dirs.length === 0 ? (
+            <Text style={st.startEmpty}>No subfolders here. Create one, or start the agent in this folder.</Text>
+          ) : (
+            dirs.map((d) => (
+              <Pressable key={d} onPress={() => void load(cwd ? `${cwd}/${d}` : d)} style={st.dirRow}>
+                <Icon name="folder" size={17} color={C.accent} />
+                <Text style={st.dirName} numberOfLines={1}>{d}</Text>
+                <Icon name="caret" size={16} color={C.textFaint} />
+              </Pressable>
+            ))
+          )}
+        </ScrollView>
+
+        {creating ? (
+          <View style={st.newRow}>
+            <TextInput value={newName} onChangeText={setNewName} autoFocus placeholder="new folder name" placeholderTextColor={C.textMute} autoCapitalize="none" style={[st.input, st.newInput]} />
+            <Btn label="Create" kind="accent" onPress={create} />
           </View>
+        ) : (
+          <Pressable onPress={() => setCreating(true)} style={st.newFolder}>
+            <Icon name="plus" size={16} color={C.accent} />
+            <Text style={st.newFolderText}>New folder in {here}</Text>
+          </Pressable>
         )}
 
         <Text style={st.label}>TASK</Text>
@@ -199,12 +255,9 @@ export function StartAgentSheet({ folders, root, onClose, onStart }: { folders: 
           ))}
         </View>
 
-        <Pressable
-          onPress={() => { if (project) { onStart(project, agent, task.trim()); onClose(); } }}
-          style={[st.pairBtn, !project && st.disabled]}
-        >
+        <Pressable onPress={() => { onSpawn(cwd, agent, task.trim()); onClose(); }} style={st.pairBtn}>
           <Icon name="rocket" size={17} color={C.onAccent} />
-          <Text style={st.pairBtnText}>Start agent</Text>
+          <Text style={st.pairBtnText}>Start in {here}</Text>
         </Pressable>
       </View>
     </Modal>
@@ -267,7 +320,18 @@ const st = StyleSheet.create({
   tagOn: { backgroundColor: C.accent, borderColor: C.accent },
   tagText: { color: "#c9cad1", fontWeight: "600", fontSize: 13 },
   tagTextOn: { color: C.onAccent },
-  startEmpty: { color: C.textMute, fontSize: 13, lineHeight: 18, marginBottom: 6 },
+  startEmpty: { color: C.textMute, fontSize: 13, lineHeight: 18, padding: 14 },
+  crumbs: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 4, marginBottom: 8 },
+  crumb: { flexDirection: "row", alignItems: "center", gap: 4 },
+  crumbText: { color: C.textDim, fontSize: 13, fontWeight: "500" },
+  crumbHere: { color: C.text, fontWeight: "700" },
+  browser: { maxHeight: 180, borderWidth: 1, borderColor: C.border, borderRadius: 12, backgroundColor: C.card2 },
+  dirRow: { flexDirection: "row", alignItems: "center", gap: 11, paddingHorizontal: 13, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.border },
+  dirName: { color: C.text, fontSize: 14.5, flex: 1 },
+  newRow: { flexDirection: "row", gap: 8, alignItems: "center", marginTop: 10 },
+  newInput: { flex: 1, marginBottom: 0 },
+  newFolder: { flexDirection: "row", alignItems: "center", gap: 7, paddingVertical: 11, marginTop: 6 },
+  newFolderText: { color: C.accent, fontSize: 14, fontWeight: "600" },
   input: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 12, padding: 13, color: C.text, fontSize: 14, marginBottom: 8, textAlignVertical: "top" },
   taskInput: { height: 70, marginBottom: 14 },
   pairBtn: { height: 54, backgroundColor: C.accent, borderRadius: 15, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },

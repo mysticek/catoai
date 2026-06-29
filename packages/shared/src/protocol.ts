@@ -42,6 +42,7 @@ export type ClientMessage =
       }
     >
   | Envelope<"question.answer", { id: string; optionIndex: number }>
+  | Envelope<"worker.spawn", { agentKind: string; path: string; task?: string }>
   | Envelope<"subscribe", { streams: string[] }>
   | Envelope<"ping", Record<string, never>>;
 

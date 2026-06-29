@@ -65,6 +65,7 @@ async function main(): Promise<void> {
   // Wire conversational-question flow: manager detects → phones; phones answer → agent.
   manager.setOnQuestion((q) => ws.pushQuestion(q));
   ws.setQuestionResolver((id, i) => void manager.answerQuestion(id, i));
+  ws.setSpawnHandler((kind, path, task) => void manager.spawnForProject(kind, path, task));
   manager.start();
 
   // Announce on the LAN so phones discover this machine automatically (no IP typing).

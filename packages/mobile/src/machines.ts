@@ -87,18 +87,38 @@ export async function fetchMachineInfo(address: string): Promise<MachineInfo | n
   }
 }
 
-/** List the project folders the agent can start an agent in (under its workspace root). */
-export async function fetchFolders(address: string): Promise<{ root: string; folders: string[] } | null> {
-  const base = address.replace(/^ws(s?):\/\//i, "http$1://").replace(/\/v1\/?$/i, "");
+/** http(s) base URL from a ws(s) address (strips the /v1 path). */
+const httpBase = (address: string): string =>
+  address.replace(/^ws(s?):\/\//i, "http$1://").replace(/\/v1\/?$/i, "");
+
+/** Browse subfolders under the agent's workspace root (nested; path is root-relative). */
+export async function browseFolders(
+  address: string,
+  path = "",
+): Promise<{ root: string; path: string; dirs: string[] } | null> {
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 2500);
-    const res = await fetch(`${base}/folders`, { signal: ctrl.signal });
+    const res = await fetch(`${httpBase(address)}/folders?path=${encodeURIComponent(path)}`, { signal: ctrl.signal });
     clearTimeout(t);
     if (!res.ok) return null;
-    return (await res.json()) as { root: string; folders: string[] };
+    return (await res.json()) as { root: string; path: string; dirs: string[] };
   } catch {
     return null;
+  }
+}
+
+/** Create a folder (root-relative path, nested ok). */
+export async function createFolder(address: string, path: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${httpBase(address)}/folders`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+    return res.ok;
+  } catch {
+    return false;
   }
 }
 

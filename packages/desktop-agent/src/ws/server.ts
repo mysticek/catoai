@@ -10,9 +10,9 @@ import { ulid } from "ulid";
 import { friendlyHost } from "../util/host.js";
 import { machineId } from "../util/machine-id.js";
 import { writeFile, unlink } from "node:fs/promises";
-import { readdirSync } from "node:fs";
+import { readdirSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, basename } from "node:path";
+import { join, basename, resolve, sep } from "node:path";
 import {
   PROTOCOL_VERSION,
   type CatoEvent,
@@ -46,6 +46,13 @@ export class WsServer {
   /** Wire how an answered question is delivered back to the agent (AgentManager). */
   setQuestionResolver(fn: (id: string, optionIndex: number) => void): void {
     this.#onQuestionAnswer = fn;
+  }
+
+  #onSpawn: (agentKind: string, path: string, task?: string) => void = () => {};
+
+  /** Wire how a structured spawn (from the app's folder picker) launches an agent. */
+  setSpawnHandler(fn: (agentKind: string, path: string, task?: string) => void): void {
+    this.#onSpawn = fn;
   }
 
   /** Push a pending conversational question to all paired phones. */
@@ -98,8 +105,15 @@ export class WsServer {
     this.bus.onAny((event) => this.#pushEvent(event));
   }
 
-  /** HTTP endpoints: GET /info (machine identity for the pairing list) + the PreToolUse
-   *  hook (an agent asks "may I run this tool?" → ask the human). */
+  /** Resolve a relative path under the workspace root, refusing any escape (../). */
+  #resolveInWorkspace(rel: string): string | null {
+    const root = resolve(this.config.workspaceRoot);
+    const target = resolve(root, rel || ".");
+    if (target !== root && !target.startsWith(root + sep)) return null;
+    return target;
+  }
+
+  /** HTTP endpoints: GET /info · GET/POST /folders (browse + create) · PreToolUse hook. */
   #onHttp(req: IncomingMessage, res: ServerResponse): void {
     // Clean UTF-8 machine name over HTTP — reliable where mDNS TXT mojibakes it.
     if (req.method === "GET" && (req.url === "/info" || req.url === "/v1/info")) {
@@ -108,29 +122,50 @@ export class WsServer {
       );
       return;
     }
-    // Folders under the workspace root → the phone's "start an agent" picker.
-    if (req.method === "GET" && req.url === "/folders") {
-      let folders: string[] = [];
-      try {
-        folders = readdirSync(this.config.workspaceRoot, { withFileTypes: true })
-          .filter((d) => d.isDirectory() && !d.name.startsWith("."))
-          .map((d) => d.name)
-          .sort();
-      } catch {
-        /* workspace root missing → empty */
+    const url = new URL(req.url ?? "/", "http://localhost");
+    // Browse folders under the workspace root (nested) → the "start an agent" picker.
+    if (req.method === "GET" && url.pathname === "/folders") {
+      const rel = url.searchParams.get("path") ?? "";
+      const dir = this.#resolveInWorkspace(rel);
+      let dirs: string[] = [];
+      if (dir) {
+        try {
+          dirs = readdirSync(dir, { withFileTypes: true })
+            .filter((d) => d.isDirectory() && !d.name.startsWith("."))
+            .map((d) => d.name)
+            .sort();
+        } catch {
+          /* unreadable → empty */
+        }
       }
       res.writeHead(200, { "content-type": "application/json; charset=utf-8" }).end(
-        JSON.stringify({ root: this.config.workspaceRoot, folders }),
+        JSON.stringify({ root: this.config.workspaceRoot, path: rel, dirs }),
       );
       return;
     }
-    if (req.method !== "POST" || req.url !== "/hooks/pretooluse") {
+
+    const isHook = req.method === "POST" && url.pathname === "/hooks/pretooluse";
+    const isMkdir = req.method === "POST" && url.pathname === "/folders";
+    if (!isHook && !isMkdir) {
       res.writeHead(404).end();
       return;
     }
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", async () => {
+      // Create a folder under the workspace root (sandboxed).
+      if (isMkdir) {
+        try {
+          const { path } = JSON.parse(body || "{}") as { path?: string };
+          const dir = this.#resolveInWorkspace(path ?? "");
+          if (!dir || !path) return res.writeHead(400).end(JSON.stringify({ ok: false }));
+          mkdirSync(dir, { recursive: true });
+          res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, path }));
+        } catch {
+          res.writeHead(500).end(JSON.stringify({ ok: false }));
+        }
+        return;
+      }
       try {
         const p = JSON.parse(body || "{}") as {
           tool_name?: string;
@@ -262,6 +297,12 @@ export class WsServer {
         case "question.answer": {
           if (!authenticated) return;
           this.#onQuestionAnswer(msg.payload.id, msg.payload.optionIndex);
+          return;
+        }
+
+        case "worker.spawn": {
+          if (!authenticated) return;
+          this.#onSpawn(msg.payload.agentKind, msg.payload.path, msg.payload.task);
           return;
         }
 

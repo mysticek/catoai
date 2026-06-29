@@ -9,7 +9,7 @@
  * spawned by Cato (`cato_*`) are managed by the spawn/recovery path.
  */
 
-import { join } from "node:path";
+import { join, basename } from "node:path";
 import { existsSync } from "node:fs";
 import { ulid } from "ulid";
 import type { AgentQuestion } from "@cato/shared";
@@ -176,18 +176,21 @@ export class AgentManager {
    * workspace root, launch the agent in a fresh tmux session, capture it, and
    * register it (with launch_command, so recovery can resurrect it).
    */
-  async spawnForProject(agentKind: string, project: string): Promise<SpawnResult> {
+  /** Launch an agent. `projectPath` may be a name or a nested path under the workspace
+   *  root (e.g. "work/client/api"). Optional `task` is sent once the agent is ready. */
+  async spawnForProject(agentKind: string, projectPath: string, task?: string): Promise<SpawnResult> {
     const profile = PROFILES[agentKind];
     if (!profile) return { ok: false, reason: `nepoznám agenta ${agentKind}` };
-    const cwd = join(this.#workspaceRoot, project);
-    if (!existsSync(cwd)) return { ok: false, reason: `nenašiel som priečinok projektu ${project}` };
+    const cwd = join(this.#workspaceRoot, projectPath);
+    if (!existsSync(cwd)) return { ok: false, reason: `nenašiel som priečinok ${projectPath}` };
+    const project = basename(projectPath) || basename(this.#workspaceRoot);
 
     const target = `${SESSION_PREFIX}${ulid()}`;
     await newShellSession(target, cwd);
     await sendLine(target, profile.command);
 
     const projectId = await this.memory.ensureProject(project, cwd);
-    const taskId = await this.memory.createTask(projectId, `spustený ${agentKind}`);
+    const taskId = await this.memory.createTask(projectId, task || `spustený ${agentKind}`);
     const workerId = await this.memory.startWorker({
       projectId, projectName: project, agentKind, sessionId: target,
       tmuxTarget: target, launchCommand: profile.command, taskId,
@@ -196,6 +199,8 @@ export class AgentManager {
     this.#tracked.set(target, { workerId, projectId, projectName: project, source, lastVisible: "", stable: 0 });
     this.#log(`spawned ${agentKind} for ${project} in ${target}`);
     void this.#ingest(source, { workerId, projectId, projectName: project });
+    // Give the agent a moment to reach its prompt, then hand it the task.
+    if (task) setTimeout(() => void sendLine(target, task), 2500);
     return { ok: true, cwd };
   }
 

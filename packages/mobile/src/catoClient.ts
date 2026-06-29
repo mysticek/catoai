@@ -121,6 +121,11 @@ export class CatoClient {
     this.#send("question.answer", { id: questionId, optionIndex });
   }
 
+  /** Launch an agent in a workspace folder (path relative to the agent's workspace root). */
+  spawnWorker(agentKind: string, path: string, task?: string): void {
+    this.#send("worker.spawn", { agentKind, path, task: task || undefined });
+  }
+
   #send(type: string, payload: unknown): void {
     this.#ws?.send(
       JSON.stringify({ v: PROTOCOL_VERSION, id: id(), type, ts: new Date().toISOString(), payload }),
