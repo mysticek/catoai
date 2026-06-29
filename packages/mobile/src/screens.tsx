@@ -5,7 +5,7 @@
 import { ReactNode, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View, ActivityIndicator, TextInput } from "react-native";
 import { C, R, S, tint, MONO, STATUS, StatusKey } from "./theme";
-import { Icon, Dot, StatusDot, Pill, RiskBadge, SectionLabel, Card, Btn, IconChip, L } from "./ui";
+import { Icon, Dot, StatusDot, Pill, RiskBadge, SectionLabel, Card, Btn, IconChip, L, KeyboardSafe } from "./ui";
 import type { ProjectStatus, ApprovalRequest, ActivityEvent } from "./catoClient";
 import { type Machine, platformLabel, machineLabel } from "./machines";
 
@@ -386,6 +386,7 @@ export function PairScreen({
   const [adding, setAdding] = useState(false);
   const [addr, setAddr] = useState("");
   return (
+    <KeyboardSafe>
     <ScrollView contentContainerStyle={st.pairWrap} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
       <View style={st.spacer40} />
       <View style={st.pairLogo}><Icon name="shield" size={34} color={C.onAccent} /></View>
@@ -443,6 +444,7 @@ export function PairScreen({
         <Icon name="caret" size={15} color={C.textFaint} />
       </Pressable>
     </ScrollView>
+    </KeyboardSafe>
   );
 }
 

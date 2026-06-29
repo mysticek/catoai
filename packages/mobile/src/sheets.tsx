@@ -5,7 +5,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { C, tint, MONO } from "./theme";
-import { Icon, Pill, Btn, L } from "./ui";
+import { Icon, Pill, Btn, L, BottomSheet, KeyboardSafe } from "./ui";
 import type { ApprovalRequest, AgentQuestion } from "./catoClient";
 import { browseFolders, createFolder } from "./machines";
 
@@ -30,7 +30,7 @@ export function ApprovalDetailSheet({
 
   return (
     <Modal visible animationType="slide" transparent onRequestClose={close}>
-      <View style={st.root}>
+      <KeyboardSafe style={st.root}>
         <View style={st.handleRow}>
           <Pressable onPress={close} hitSlop={10}><Icon name="arrowLeft" size={22} color={C.textDim} /></Pressable>
           <View style={st.handleBody}>
@@ -131,7 +131,7 @@ export function ApprovalDetailSheet({
             </View>
           )}
         </View>
-      </View>
+      </KeyboardSafe>
     </Modal>
   );
 }
@@ -139,28 +139,24 @@ export function ApprovalDetailSheet({
 export function MultiChoiceSheet({ question, onClose, onAnswer }: { question: AgentQuestion | null; onClose: () => void; onAnswer: (id: string, index: number) => void }) {
   if (!question) return null;
   return (
-    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={st.backdrop} onPress={onClose} />
-      <View style={st.sheet}>
-        <View style={st.grabber} />
-        <View style={st.askRow}>
-          <View style={st.askLogo}><Icon name="chat" size={14} color={C.onAccent} /></View>
-          <Text style={st.askLabel}>CATO IS ASKING</Text>
-        </View>
-        {question.project ? <Text style={st.meta}>{question.project} · waiting on you</Text> : null}
-        <Text style={st.question}>{question.question}</Text>
-        <View style={st.choices}>
-          {question.options.map((opt, i) => (
-            <Pressable key={i} onPress={() => { onAnswer(question.id, i); onClose(); }} style={st.choice}>
-              <View style={st.choiceNum}><Text style={st.choiceNumText}>{i + 1}</Text></View>
-              <Text style={st.choiceText}>{opt}</Text>
-              <Icon name="caret" size={16} color={C.textFaint} />
-            </Pressable>
-          ))}
-        </View>
-        <Text style={st.sheetHint}>Tap a choice · or say it</Text>
+    <BottomSheet onClose={onClose}>
+      <View style={st.askRow}>
+        <View style={st.askLogo}><Icon name="chat" size={14} color={C.onAccent} /></View>
+        <Text style={st.askLabel}>CATO IS ASKING</Text>
       </View>
-    </Modal>
+      {question.project ? <Text style={st.meta}>{question.project} · waiting on you</Text> : null}
+      <Text style={st.question}>{question.question}</Text>
+      <View style={st.choices}>
+        {question.options.map((opt, i) => (
+          <Pressable key={i} onPress={() => { onAnswer(question.id, i); onClose(); }} style={st.choice}>
+            <View style={st.choiceNum}><Text style={st.choiceNumText}>{i + 1}</Text></View>
+            <Text style={st.choiceText}>{opt}</Text>
+            <Icon name="caret" size={16} color={C.textFaint} />
+          </Pressable>
+        ))}
+      </View>
+      <Text style={st.sheetHint}>Tap a choice · or say it</Text>
+    </BottomSheet>
   );
 }
 
@@ -194,14 +190,11 @@ export function StartAgentSheet({ address, onClose, onSpawn }: { address: string
   };
 
   return (
-    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={st.backdrop} onPress={onClose} />
-      <View style={st.sheet}>
-        <View style={st.grabber} />
+    <BottomSheet onClose={onClose}>
         <Text style={[st.question, st.startTitle]}>Start an agent</Text>
 
-        <Text style={st.label}>FOLDER</Text>
-        {/* breadcrumb */}
+        <Text style={st.label}>PICK A FOLDER (tap to open, then start inside it)</Text>
+        {/* breadcrumb — shows exactly where you are */}
         <View style={st.crumbs}>
           <Pressable onPress={() => void load("")} style={st.crumb}><Icon name="home" size={13} color={cwd ? C.accent : C.text} /><Text style={[st.crumbText, !cwd && st.crumbHere]}>{rootName}</Text></Pressable>
           {crumbs.map((c, i) => (
@@ -232,14 +225,18 @@ export function StartAgentSheet({ address, onClose, onSpawn }: { address: string
         </ScrollView>
 
         {creating ? (
-          <View style={st.newRow}>
-            <TextInput value={newName} onChangeText={setNewName} autoFocus placeholder="new folder name" placeholderTextColor={C.textMute} autoCapitalize="none" style={[st.input, st.newInput]} />
-            <Btn label="Create" kind="accent" onPress={create} />
+          <View style={st.newBox}>
+            <Text style={st.newHint}>New folder inside <Text style={st.newPath}>{cwd ? `${rootName}/${cwd}` : rootName}</Text></Text>
+            <View style={st.newRow}>
+              <TextInput value={newName} onChangeText={setNewName} autoFocus placeholder="folder-name" placeholderTextColor={C.textMute} autoCapitalize="none" autoCorrect={false} style={[st.input, st.newInput]} />
+              <Btn label="Create" kind="accent" onPress={create} />
+            </View>
+            <Pressable onPress={() => { setCreating(false); setNewName(""); }}><Text style={st.newCancel}>Cancel</Text></Pressable>
           </View>
         ) : (
           <Pressable onPress={() => setCreating(true)} style={st.newFolder}>
             <Icon name="plus" size={16} color={C.accent} />
-            <Text style={st.newFolderText}>New folder in {here}</Text>
+            <Text style={st.newFolderText}>New folder inside {here}</Text>
           </Pressable>
         )}
 
@@ -259,8 +256,7 @@ export function StartAgentSheet({ address, onClose, onSpawn }: { address: string
           <Icon name="rocket" size={17} color={C.onAccent} />
           <Text style={st.pairBtnText}>Start in {here}</Text>
         </Pressable>
-      </View>
-    </Modal>
+    </BottomSheet>
   );
 }
 
@@ -328,8 +324,12 @@ const st = StyleSheet.create({
   browser: { maxHeight: 180, borderWidth: 1, borderColor: C.border, borderRadius: 12, backgroundColor: C.card2 },
   dirRow: { flexDirection: "row", alignItems: "center", gap: 11, paddingHorizontal: 13, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.border },
   dirName: { color: C.text, fontSize: 14.5, flex: 1 },
-  newRow: { flexDirection: "row", gap: 8, alignItems: "center", marginTop: 10 },
+  newBox: { backgroundColor: C.card, borderWidth: 1, borderColor: tint(C.accent, 0.3), borderRadius: 12, padding: 12, marginTop: 8 },
+  newHint: { color: C.textDim, fontSize: 12.5, marginBottom: 9 },
+  newPath: { color: C.text, fontFamily: MONO, fontSize: 12.5 },
+  newRow: { flexDirection: "row", gap: 8, alignItems: "center" },
   newInput: { flex: 1, marginBottom: 0 },
+  newCancel: { color: C.textMute, fontSize: 13, textAlign: "center", marginTop: 10 },
   newFolder: { flexDirection: "row", alignItems: "center", gap: 7, paddingVertical: 11, marginTop: 6 },
   newFolderText: { color: C.accent, fontSize: 14, fontWeight: "600" },
   input: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 12, padding: 13, color: C.text, fontSize: 14, marginBottom: 8, textAlignVertical: "top" },

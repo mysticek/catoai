@@ -4,7 +4,7 @@
  * four tabs (Talk / Approvals / Activity / Projects). Implements Cato.dc.html.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Modal, Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as Speech from "expo-speech";
 import Constants from "expo-constants";
@@ -12,7 +12,7 @@ import { useAudioRecorder, AudioModule, setAudioModeAsync } from "expo-audio";
 import { CatoClient, type ProjectStatus, type ApprovalRequest, type AgentQuestion, type ActivityEvent } from "./src/catoClient";
 import { readBase64, REC_OPTIONS } from "./src/audio";
 import { C, tint } from "./src/theme";
-import { Icon, Pill, L } from "./src/ui";
+import { Icon, Pill, L, BottomSheet } from "./src/ui";
 import {
   TalkScreen, ApprovalsScreen, ActivityScreen, ProjectsScreen, PairScreen, TabBar, ListeningOverlay, AppBar, type Tab,
 } from "./src/screens";
@@ -244,10 +244,7 @@ function SettingsSheet({
   if (!open) return null;
   const langs: [string, string][] = [["en", "English"], ["sk", "Slovenčina"], ["cs", "Čeština"]];
   return (
-    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={s.backdrop} onPress={onClose} />
-      <View style={s.sheet}>
-        <View style={s.grabber} />
+    <BottomSheet onClose={onClose}>
         <Text style={s.sheetTitle}>Settings</Text>
 
         <Text style={s.label}>LANGUAGE</Text>
@@ -284,8 +281,7 @@ function SettingsSheet({
           </View>
           <Text style={s.connUrl}>From anywhere · push notifications</Text>
         </View>
-      </View>
-    </Modal>
+    </BottomSheet>
   );
 }
 

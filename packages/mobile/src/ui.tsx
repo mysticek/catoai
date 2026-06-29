@@ -3,7 +3,7 @@
  * Icons via @expo/vector-icons (Ionicons) mapped from the design's Phosphor names.
  */
 import { ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View, ViewStyle, TextStyle } from "react-native";
+import { KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, View, ViewStyle, TextStyle } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { C, R, S, tint, MONO, STATUS, StatusKey } from "./theme";
 
@@ -135,6 +135,30 @@ export function Mono({ children, style }: { children: ReactNode; style?: TextSty
   return <Text style={[s.mono, style]}>{children}</Text>;
 }
 
+/** Bottom sheet that lifts above the keyboard (fixes the classic "input hidden" bug). */
+export function BottomSheet({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  return (
+    <Modal visible animationType="slide" transparent statusBarTranslucent onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={s.kavEnd}>
+        <Pressable style={s.sheetBackdrop} onPress={onClose} />
+        <View style={s.sheet}>
+          <View style={s.grabber} />
+          {children}
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+/** Wrap a full-screen view so its inputs stay visible above the keyboard. */
+export function KeyboardSafe({ children, style }: { children: ReactNode; style?: ViewStyle }) {
+  return (
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={[s.flex, style]}>
+      {children}
+    </KeyboardAvoidingView>
+  );
+}
+
 export function IconChip({ name, color = C.accent, bg, onPress }: { name: keyof typeof ICON; color?: string; bg?: string; onPress?: () => void }) {
   return (
     <Pressable onPress={onPress} style={[s.iconChip, { backgroundColor: bg ?? tint(color, 0.16) }]}>
@@ -157,4 +181,9 @@ const s = StyleSheet.create({
   btn: { height: 46, borderRadius: R.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingHorizontal: 14 },
   btnText: { fontSize: 14.5, fontWeight: "600" },
   iconChip: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center" },
+  flex: { flex: 1 },
+  kavEnd: { flex: 1, justifyContent: "flex-end" },
+  sheetBackdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.55)" },
+  sheet: { backgroundColor: "#121317", borderTopLeftRadius: 26, borderTopRightRadius: 26, borderWidth: 1, borderColor: C.borderStrong, padding: 22, paddingBottom: 34 },
+  grabber: { alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.18)", marginBottom: 16 },
 });
