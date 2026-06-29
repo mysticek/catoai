@@ -2,7 +2,7 @@
   "name": "cato",
   "version": "0.0.0",
   "private": true,
-  "description": "Cato \u2014 voice-first operating system for AI coding agents",
+  "description": "Cato — voice-first operating system for AI coding agents",
   "type": "module",
   "workspaces": [
     "packages/shared",
@@ -20,5 +20,8 @@
     "test": "node --import tsx --test packages/desktop-agent/test/*.test.ts",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "dev:agent": "npm run dev -w @cato/desktop-agent"
+  },
+  "dependencies": {
+    "qrcode-terminal": "^0.12.0"
   }
 }
