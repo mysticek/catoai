@@ -1,3 +1,5 @@
+# OPTIONAL / advanced. The local DB is now embedded (PGlite) — no Docker needed.
+# This compose is kept only for a self-hosted Postgres (e.g. a future cloud relay).
 services:
   db:
     image: pgvector/pgvector:pg16

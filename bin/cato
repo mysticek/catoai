@@ -11,6 +11,18 @@
 # Detach with Ctrl-b d and walk away — Cato keeps capturing.
 set -euo pipefail
 
+self="$0"; [ -L "$self" ] && self="$(readlink "$self")"
+selfdir="$(cd "$(dirname "$self")" && pwd)"
+
+# `cato setup` → onboarding (workspace root + pairing token).
+if [ "${1:-}" = "setup" ]; then exec node "$selfdir/cato-setup.mjs"; fi
+
+# First run on this machine: no config yet → onboard before launching.
+if [ ! -f "$HOME/.cato/config.json" ]; then
+  echo "cato: first run on this machine — let's set up." >&2
+  node "$selfdir/cato-setup.mjs"
+fi
+
 # Pick the agent: explicit first arg, else the first installed of claude / codex.
 if [ "$#" -gt 0 ] && command -v "$1" >/dev/null 2>&1; then
   agent="$1"; shift
@@ -26,8 +38,6 @@ fi
 # Install Cato's approval hook into THIS project (Claude only; project-scoped, so it
 # never gates your global claude or other sessions).
 if [ "$agent" = "claude" ]; then
-  self="$0"; [ -L "$self" ] && self="$(readlink "$self")"
-  selfdir="$(cd "$(dirname "$self")" && pwd)"
   node "$selfdir/cato-install-hook.mjs" "$PWD" "${CATO_WS_PORT:-8787}" 2>/dev/null || true
 fi
 

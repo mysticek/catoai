@@ -3,11 +3,10 @@
 -- Keep a single embedding dimension per deployment.
 
 CREATE EXTENSION IF NOT EXISTS vector;
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Projects (workspaces Cato is allowed to see)
 CREATE TABLE IF NOT EXISTS project (
-  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name        TEXT NOT NULL UNIQUE,            -- "safeforme"
   root_path   TEXT NOT NULL,                   -- approved workspace folder
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -15,7 +14,7 @@ CREATE TABLE IF NOT EXISTS project (
 
 -- Tasks: permanent units of intent
 CREATE TABLE IF NOT EXISTS task (
-  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id  UUID NOT NULL REFERENCES project(id),
   intent      TEXT NOT NULL,
   state       TEXT NOT NULL DEFAULT 'open',    -- open|active|waiting|done|abandoned
@@ -25,7 +24,7 @@ CREATE TABLE IF NOT EXISTS task (
 
 -- Workers: disposable instances bound to a task over time
 CREATE TABLE IF NOT EXISTS worker (
-  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   task_id     UUID REFERENCES task(id),
   project_id  UUID REFERENCES project(id),
   agent_kind  TEXT NOT NULL,                   -- "claude-code"
@@ -39,7 +38,7 @@ CREATE TABLE IF NOT EXISTS worker (
 
 -- Events: immutable, append-only source of truth
 CREATE TABLE IF NOT EXISTS event (
-  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   type        TEXT NOT NULL,                   -- "TestsFailed", ...
   project_id  UUID REFERENCES project(id),
   task_id     UUID REFERENCES task(id),
@@ -67,7 +66,7 @@ CREATE INDEX IF NOT EXISTS capture_line_project_idx ON capture_line (project_id,
 
 -- Long-term derived memory: decisions, project knowledge, summaries, preferences
 CREATE TABLE IF NOT EXISTS memory (
-  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id      UUID REFERENCES project(id),
   kind            TEXT NOT NULL,               -- decision|knowledge|summary|preference
   content         TEXT NOT NULL,
@@ -80,7 +79,7 @@ CREATE TABLE IF NOT EXISTS memory (
 -- Task checkpoints for worker recovery. Keyed by project so a checkpoint survives
 -- the worker that created it (Worker #2 restores what Worker #1 saved).
 CREATE TABLE IF NOT EXISTS checkpoint (
-  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id  UUID REFERENCES project(id),
   task_id     UUID REFERENCES task(id),
   state       JSONB NOT NULL,                  -- enough to resume the task

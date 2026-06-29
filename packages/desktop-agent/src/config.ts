@@ -1,7 +1,12 @@
-/** Runtime configuration, loaded from environment (see infra/.env.example). */
+/** Runtime configuration. Precedence: env var > ~/.cato/config.json (written by
+ *  `cato setup`) > built-in default. See infra/.env.example. */
+
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 export interface Config {
-  databaseUrl: string;
+  dbDir: string;
   wsHost: string;
   wsPort: number;
   pairingToken: string;
@@ -15,34 +20,38 @@ export interface Config {
   llmModel: string;
 }
 
-function env(name: string, fallback?: string): string {
-  const value = process.env[name] ?? fallback;
-  if (value === undefined) throw new Error(`Missing required env var: ${name}`);
-  return value;
+export const CONFIG_FILE = join(homedir(), ".cato", "config.json");
+
+function readSaved(): Record<string, string> {
+  try {
+    return JSON.parse(readFileSync(CONFIG_FILE, "utf8")) as Record<string, string>;
+  } catch {
+    return {};
+  }
 }
 
 export function loadConfig(): Config {
+  const saved = readSaved();
+  // env var wins (dev overrides), then the persisted setup, then the built-in default.
+  const get = (envName: string, jsonKey: string, fallback: string): string =>
+    process.env[envName] ?? saved[jsonKey] ?? fallback;
+
   return {
-    databaseUrl: env(
-      "DATABASE_URL",
-      "postgres://cato:cato@localhost:5433/cato",
-    ),
-    wsHost: env("WS_HOST", "0.0.0.0"),
-    wsPort: Number(env("WS_PORT", "8787")),
-    pairingToken: env("PAIRING_TOKEN", "changeme"),
-    embeddingModel: env("EMBEDDING_MODEL", "bge-m3"),
-    embeddingDim: Number(env("EMBEDDING_DIM", "1024")),
-    sttBin: env("STT_BIN", "whisper-cli"),
-    sttServerUrl: env("STT_SERVER_URL", "http://127.0.0.1:8088"),
-    sttModel: env(
-      "STT_MODEL",
-      `${process.env.HOME ?? ""}/.cato/models/ggml-large-v3-turbo.bin`,
-    ),
-    ffmpegBin: env("FFMPEG_BIN", "ffmpeg"),
+    // Embedded PGlite database directory (no Docker/Postgres server needed).
+    dbDir: get("DB_DIR", "dbDir", `${homedir()}/.cato/db`),
+    wsHost: get("WS_HOST", "wsHost", "0.0.0.0"),
+    wsPort: Number(get("WS_PORT", "wsPort", "8787")),
+    pairingToken: get("PAIRING_TOKEN", "pairingToken", "changeme"),
+    embeddingModel: get("EMBEDDING_MODEL", "embeddingModel", "bge-m3"),
+    embeddingDim: Number(get("EMBEDDING_DIM", "embeddingDim", "1024")),
+    sttBin: get("STT_BIN", "sttBin", "whisper-cli"),
+    sttServerUrl: get("STT_SERVER_URL", "sttServerUrl", "http://127.0.0.1:8088"),
+    sttModel: get("STT_MODEL", "sttModel", `${homedir()}/.cato/models/ggml-large-v3-turbo.bin`),
+    ffmpegBin: get("FFMPEG_BIN", "ffmpegBin", "ffmpeg"),
     // Where Cato looks for project folders when voice-spawning a worker.
-    workspaceRoot: env("WORKSPACE_ROOT", `${process.env.HOME ?? ""}/dev`),
+    workspaceRoot: get("WORKSPACE_ROOT", "workspaceRoot", `${homedir()}/dev`),
     // gemma3:4b = non-reasoning multilingual instruct → clean Slovak summaries + JSON
     // intent classification (qwen3 is a reasoning model and leaks its thinking into prose).
-    llmModel: env("LLM_MODEL", "gemma3:4b"),
+    llmModel: get("LLM_MODEL", "llmModel", "gemma3:4b"),
   };
 }

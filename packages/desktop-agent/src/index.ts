@@ -23,7 +23,7 @@ import { friendlyHost, asciiHost } from "./util/host.js";
 async function main(): Promise<void> {
   const config = loadConfig();
   const bus = new EventBus();
-  const pool = createPool(config.databaseUrl);
+  const pool = await createPool(config.dbDir);
   const embedder = await createEmbedder({ dim: config.embeddingDim, model: config.embeddingModel });
   // Memory routes every appended event to the bus → live push + reactions.
   const memory = new MemoryEngine(pool, embedder, (e) => bus.emit(e));

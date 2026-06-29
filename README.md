@@ -10,20 +10,24 @@ from your phone. Leave the desk; keep shipping.
 
 Spec: [`docs/`](./docs) — [PROJECT](./docs/PROJECT.md) · [ARCHITECTURE](./docs/ARCHITECTURE.md) · [PROTOCOL](./docs/PROTOCOL.md) · [MEMORY-SCHEMA](./docs/MEMORY-SCHEMA.md) · [MVP](./docs/MVP.md)
 
-## Install (macOS)
+## Install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mysticek/catoai/main/install.sh | bash
 ```
 
 (or clone and run `./install.sh`). One command sets up everything: tmux · ffmpeg ·
-whisper.cpp · Ollama + models (bge-m3, gemma3:4b) · whisper large-v3-turbo ·
-Postgres+pgvector (Docker) · builds the agent · links the `cato` launcher · and configures
-the always-on agent (left **inactive** — enable with `npm run daemon:on`). Idempotent.
-*(A Homebrew tap is planned.)*
+whisper.cpp · Ollama + models (bge-m3, gemma3:4b) · whisper large-v3-turbo · builds the
+agent · links the `cato` launcher · configures the always-on agent (left **inactive** —
+enable with `npm run daemon:on`) · and runs onboarding (`cato setup`). Idempotent.
 
-Prereqs it expects: **Homebrew**, **Node ≥20**, **Docker Desktop**, and at least one
-coding agent — **Claude Code** (`claude`) and/or **Codex** (`codex`).
+**No Docker, no database server** — the DB is **embedded (PGlite, WASM)** in `~/.cato/db`.
+
+**Cross-platform:** macOS (Homebrew) and Linux (apt/dnf/pacman) are auto-detected;
+Windows runs under WSL. The agent + DB are pure JS/WASM, so they run anywhere Node does.
+
+Prereqs: **Node ≥20** and at least one coding agent — **Claude Code** (`claude`) and/or
+**Codex** (`codex`). *(A Homebrew tap is planned.)*
 
 ## Use it
 
@@ -68,7 +72,7 @@ build via Xcode today (see its README); TestFlight for friends is the next step.
 packages/shared          types: CodingAgent, protocol, events
 packages/desktop-agent    the brain: capture · memory · orchestrator · recovery · ws · stt/llm
 packages/mobile           Expo voice terminal
-infra/                    docker-compose + schema.sql
+infra/                    schema.sql (reference) + optional docker-compose (cloud/advanced)
 bin/cato                  the launcher
 install.sh                one-command setup
 ```

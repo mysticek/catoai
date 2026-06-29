@@ -57,7 +57,7 @@ function positional(args: string[]): string[] {
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
   const config = loadConfig();
-  const pool = createPool(config.databaseUrl);
+  const pool = await createPool(config.dbDir);
   const embedder = await createEmbedder({ dim: config.embeddingDim });
   const memory = new MemoryEngine(pool, embedder);
   await mkdir(CAPTURE_DIR, { recursive: true });
