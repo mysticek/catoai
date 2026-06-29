@@ -4,6 +4,7 @@
  */
 
 import type { CatoEvent, CommandTarget } from "./events.js";
+import type { Sealed, Enc } from "./crypto.js";
 
 export const PROTOCOL_VERSION = 1 as const;
 
@@ -24,6 +25,10 @@ export type ControlAction = "continue" | "stop" | "repeat" | "summarize";
 
 export type ClientMessage =
   | Envelope<"hello", { token: string; device: string; clientVersion: string }>
+  // E2E handshake: seal the token to the agent's pinned public key (token never in clear).
+  | Envelope<"secure.hello", { sealed: Sealed }>
+  // Encrypted wrapper — `enc` decrypts to any other ClientMessage once a session exists.
+  | Envelope<"enc", { enc: Enc }>
   | Envelope<
       "voice.command",
       { audio?: string; text?: string; locale: string; target?: CommandTarget }
@@ -91,6 +96,7 @@ export type ServerMessage =
   | Envelope<"approval.update", { id: string; summary?: string; suggestions?: string[] }>
   | Envelope<"agent.question", { question: AgentQuestion }>
   | Envelope<"error", { code: string; message: string }>
+  | Envelope<"enc", { enc: Enc }>
   | Envelope<"pong", Record<string, never>>;
 
 /** A conversational choice an agent is waiting on (not a tool gate). */

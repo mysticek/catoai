@@ -16,12 +16,16 @@ import { tmpdir } from "node:os";
 import { join, basename, resolve, sep } from "node:path";
 import {
   PROTOCOL_VERSION,
+  openHandshake,
+  encrypt,
+  decrypt,
   type CatoEvent,
   type ApprovalRequest,
   type AgentQuestion,
   type ClientMessage,
   type ServerMessage,
 } from "@cato/shared";
+import { agentKeys } from "../util/keys.js";
 import type { Config } from "../config.js";
 import type { EventBus } from "../bus/event-bus.js";
 import type { Orchestrator } from "../orchestrator/orchestrator.js";
@@ -40,6 +44,7 @@ export class WsServer {
   #http: Server | undefined;
   #authed = new Set<WebSocket>();
   #authFails = new Map<string, { n: number; until: number }>(); // per-IP token-attempt lockout
+  #sessionKeys = new Map<WebSocket, string>(); // per-socket E2E session key (encrypted sockets)
   // Tool-call approvals (from agents' PreToolUse gates) awaiting a human decision.
   readonly #approvals = new ApprovalManager((a) => this.#broadcastApproval(a));
   // Conversational questions an agent is waiting on (answered via question.answer).
@@ -59,8 +64,7 @@ export class WsServer {
 
   /** Push a pending conversational question to all paired phones. */
   pushQuestion(question: AgentQuestion): void {
-    const f = frame("agent.question", { question });
-    for (const socket of this.#authed) send(socket, f);
+    this.#broadcast(frame("agent.question", { question }));
   }
 
   constructor(
@@ -135,7 +139,7 @@ export class WsServer {
       res.writeHead(200, { "content-type": "application/json; charset=utf-8" }).end(
         JSON.stringify({
           id: machineId(), host: friendlyHost(), platform: process.platform, version: SERVER_VERSION,
-          onboarded: existsSync(CONFIG_FILE), secured: this.#secured,
+          onboarded: existsSync(CONFIG_FILE), secured: this.#secured, pub: agentKeys().publicKey,
         }),
       );
       return;
@@ -248,9 +252,18 @@ export class WsServer {
     });
   }
 
+  /** Send one frame to one socket, encrypting it if that socket negotiated an E2E session. */
+  #emit(socket: WebSocket, msg: ServerMessage): void {
+    const key = this.#sessionKeys.get(socket);
+    send(socket, key ? frame("enc", { enc: encrypt(msg, key) }) : msg);
+  }
+
+  #broadcast(msg: ServerMessage): void {
+    for (const socket of this.#authed) this.#emit(socket, msg);
+  }
+
   #broadcastApproval(approval: ApprovalRequest): void {
-    const f = frame("approval.request", { approval });
-    for (const socket of this.#authed) send(socket, f);
+    this.#broadcast(frame("approval.request", { approval }));
   }
 
   /** Background: LLM-parse an approval and broadcast the enrichment as an update. */
@@ -259,14 +272,12 @@ export class WsServer {
     if (!exp || (!exp.summary && !exp.suggestions.length)) return;
     if (exp.summary) approval.summary = exp.summary; // also enriches welcome-replay
     if (exp.suggestions.length) approval.suggestions = exp.suggestions;
-    const f = frame("approval.update", { id: approval.id, summary: approval.summary, suggestions: approval.suggestions });
-    for (const socket of this.#authed) send(socket, f);
+    this.#broadcast(frame("approval.update", { id: approval.id, summary: approval.summary, suggestions: approval.suggestions }));
   }
 
   #pushEvent(event: CatoEvent): void {
     if (event.importance < PUSH_THRESHOLD) return;
-    const f = frame("event.push", { event });
-    for (const socket of this.#authed) send(socket, f);
+    this.#broadcast(frame("event.push", { event }));
   }
 
   async stop(): Promise<void> {
@@ -277,92 +288,99 @@ export class WsServer {
   #onConnection(socket: WebSocket, req?: IncomingMessage): void {
     let authenticated = false;
     const ip = req?.socket.remoteAddress ?? "?";
-    socket.on("close", () => this.#authed.delete(socket));
+    socket.on("close", () => { this.#authed.delete(socket); this.#sessionKeys.delete(socket); });
+
+    // Rate-limit + "must run setup" gate, shared by plaintext and encrypted handshakes.
+    const gateOk = (): boolean => {
+      const rec = this.#authFails.get(ip);
+      if (rec && rec.until > Date.now()) {
+        send(socket, frame("error", { code: "rate_limited", message: "too many attempts, try again shortly" }));
+        socket.close();
+        return false;
+      }
+      if (!this.#secured) {
+        send(socket, frame("error", { code: "not_set_up", message: "Run 'cato setup' on the desktop to secure it" }));
+        socket.close();
+        return false;
+      }
+      return true;
+    };
+    const badToken = (): void => {
+      const rec = this.#authFails.get(ip);
+      const n = (rec?.n ?? 0) + 1;
+      this.#authFails.set(ip, { n, until: n >= 5 ? Date.now() + 30_000 : 0 });
+      send(socket, frame("error", { code: "unauthorized", message: "bad token" }));
+      socket.close();
+    };
+    const finishAuth = (replyTo: string, sessionKey?: string): void => {
+      this.#authFails.delete(ip);
+      authenticated = true;
+      this.#authed.add(socket);
+      if (sessionKey) this.#sessionKeys.set(socket, sessionKey);
+      this.#emit(socket, frame(
+        "welcome",
+        { sessionId: ulid(), serverVersion: SERVER_VERSION, projects: [], host: friendlyHost(), platform: process.platform, machineId: machineId() },
+        replyTo,
+      ));
+      for (const approval of this.#approvals.list()) this.#emit(socket, frame("approval.request", { approval }));
+      void this.#pushInitialStatus(socket);
+    };
+
+    const handle = (msg: ClientMessage): void => {
+      switch (msg.type) {
+        case "hello": {
+          if (!gateOk()) return;
+          if (msg.payload.token !== this.config.pairingToken) return badToken();
+          finishAuth(msg.id);
+          return;
+        }
+        case "secure.hello": {
+          if (!gateOk()) return;
+          const opened = openHandshake<{ token: string }>(msg.payload.sealed, agentKeys().secretKey);
+          if (!opened || opened.payload.token !== this.config.pairingToken) return badToken();
+          finishAuth(msg.id, opened.sessionKey);
+          return;
+        }
+        case "ping":
+          this.#emit(socket, frame("pong", {}, msg.id));
+          return;
+        case "approval.resolve":
+          if (authenticated) this.#approvals.resolve(msg.payload.id, msg.payload.decision, msg.payload.reason, msg.payload.scope);
+          return;
+        case "question.answer":
+          if (authenticated) this.#onQuestionAnswer(msg.payload.id, msg.payload.optionIndex);
+          return;
+        case "worker.spawn":
+          if (authenticated) this.#onSpawn(msg.payload.agentKind, msg.payload.path, msg.payload.task);
+          return;
+        default:
+          if (!authenticated) { send(socket, frame("error", { code: "unauthorized", message: "say hello first" })); return; }
+          void this.#route(socket, msg);
+          return;
+      }
+    };
 
     socket.on("message", (raw) => {
-      let msg: ClientMessage;
+      let outer: ClientMessage;
       try {
-        msg = JSON.parse(raw.toString()) as ClientMessage;
+        outer = JSON.parse(raw.toString()) as ClientMessage;
       } catch {
         return send(socket, frame("error", { code: "bad_json", message: "invalid frame" }));
       }
-
-      switch (msg.type) {
-        case "hello": {
-          const rec = this.#authFails.get(ip);
-          if (rec && rec.until > Date.now()) {
-            send(socket, frame("error", { code: "rate_limited", message: "too many attempts, try again shortly" }));
-            socket.close();
-            return;
-          }
-          if (!this.#secured) {
-            send(socket, frame("error", { code: "not_set_up", message: "Run 'cato setup' on the desktop to secure it" }));
-            socket.close();
-            return;
-          }
-          if (msg.payload.token !== this.config.pairingToken) {
-            const n = (rec?.n ?? 0) + 1;
-            this.#authFails.set(ip, { n, until: n >= 5 ? Date.now() + 30_000 : 0 });
-            send(socket, frame("error", { code: "unauthorized", message: "bad token" }));
-            socket.close();
-            return;
-          }
-          this.#authFails.delete(ip); // success clears the counter
-          authenticated = true;
-          this.#authed.add(socket);
-          send(
-            socket,
-            frame(
-              "welcome",
-              { sessionId: ulid(), serverVersion: SERVER_VERSION, projects: [], host: friendlyHost(), platform: process.platform, machineId: machineId() },
-              msg.id,
-            ),
-          );
-          // Replay any approvals still waiting, so a just-opened phone sees them.
-          for (const approval of this.#approvals.list()) {
-            send(socket, frame("approval.request", { approval }));
-          }
-          // Send the current project statuses so the home screen isn't empty on connect.
-          void this.#pushInitialStatus(socket);
-          return;
-        }
-
-        case "ping":
-          return send(socket, frame("pong", {}, msg.id));
-
-        case "approval.resolve": {
-          if (!authenticated) return;
-          this.#approvals.resolve(msg.payload.id, msg.payload.decision, msg.payload.reason, msg.payload.scope);
-          return;
-        }
-
-        case "question.answer": {
-          if (!authenticated) return;
-          this.#onQuestionAnswer(msg.payload.id, msg.payload.optionIndex);
-          return;
-        }
-
-        case "worker.spawn": {
-          if (!authenticated) return;
-          this.#onSpawn(msg.payload.agentKind, msg.payload.path, msg.payload.task);
-          return;
-        }
-
-        default: {
-          if (!authenticated) {
-            send(socket, frame("error", { code: "unauthorized", message: "say hello first" }));
-            return;
-          }
-          void this.#route(socket, msg);
-          return;
-        }
+      // Encrypted envelope → decrypt to the real message with this socket's session key.
+      if (outer.type === "enc") {
+        const key = this.#sessionKeys.get(socket);
+        const inner = key ? decrypt<ClientMessage>(outer.payload.enc, key) : null;
+        if (!inner) { send(socket, frame("error", { code: "bad_enc", message: "no session / bad frame" })); return; }
+        return handle(inner);
       }
+      handle(outer);
     });
   }
 
   async #pushInitialStatus(socket: WebSocket): Promise<void> {
     const projects = await this.orchestrator.statuses().catch(() => []);
-    if (projects.length) send(socket, frame("status.update", { projects }));
+    if (projects.length) this.#emit(socket, frame("status.update", { projects }));
   }
 
   /** Route a voice command / control action through the Orchestrator. */
@@ -381,10 +399,10 @@ export class WsServer {
         if (!text) {
           return send(socket, frame("error", { code: "no_input", message: "voice.command needs text or audio" }));
         }
-        send(socket, frame("transcript.final", { text, locale }, msg.id));
+        this.#emit(socket, frame("transcript.final", { text, locale }, msg.id));
         const reply = await this.orchestrator.handleCommand(text, locale, msg.payload.target);
-        if (reply.statuses) send(socket, frame("status.update", { projects: reply.statuses }));
-        send(socket, frame("speech.say", { text: reply.speak, locale: reply.locale }, msg.id));
+        if (reply.statuses) this.#emit(socket, frame("status.update", { projects: reply.statuses }));
+        this.#emit(socket, frame("speech.say", { text: reply.speak, locale: reply.locale }, msg.id));
         return;
       }
 
@@ -394,8 +412,8 @@ export class WsServer {
           msg.payload.locale || DEFAULT_LOCALE,
           msg.payload.target,
         );
-        if (reply.statuses) send(socket, frame("status.update", { projects: reply.statuses }));
-        send(socket, frame("speech.say", { text: reply.speak, locale: reply.locale }, msg.id));
+        if (reply.statuses) this.#emit(socket, frame("status.update", { projects: reply.statuses }));
+        this.#emit(socket, frame("speech.say", { text: reply.speak, locale: reply.locale }, msg.id));
         return;
       }
     } catch (err) {
