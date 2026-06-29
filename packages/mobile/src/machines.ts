@@ -11,6 +11,7 @@ export interface Machine {
   platform?: string; // darwin | linux | win32
   lastSeen?: number;
   discovered?: boolean; // found live on the network via mDNS (not from saved list)
+  online?: boolean; // reachable right now (responded to /info) — drives the status dot
 }
 
 const FILE = FileSystem.documentDirectory + "cato-machines.json";

@@ -159,16 +159,20 @@ export default function App() {
     return [...map.values()];
   }, [machines, discovered]);
 
-  // Fill in each machine's clean name via HTTP /info (reliable UTF-8, unlike mDNS TXT).
+  // Re-check reachability each time we land on the Pair screen.
+  useEffect(() => { if (!connected) enriched.current.clear(); }, [connected]);
+
+  // Ping each machine's HTTP /info (once) → clean UTF-8 name + reachability (online dot).
   useEffect(() => {
     if (connected) return;
     for (const m of allMachines) {
-      if (m.name || enriched.current.has(m.address)) continue;
+      if (enriched.current.has(m.address)) continue;
       enriched.current.add(m.address);
       fetchMachineInfo(m.address).then((info) => {
-        if (!info?.host) return;
         setMachines((prev) => {
-          const next = upsert(prev, { address: m.address, name: info.host, platform: info.platform });
+          const next = upsert(prev, info?.host
+            ? { address: m.address, name: info.host, platform: info.platform, online: true }
+            : { address: m.address, online: false });
           void saveMachines(next);
           return next;
         });

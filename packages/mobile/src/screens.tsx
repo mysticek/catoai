@@ -394,12 +394,13 @@ export function PairScreen({
         {machines.map((m) => {
           const busy = connectingTo === m.address;
           return (
-            <Pressable key={m.address} onPress={() => onConnect(m.address)} disabled={busy} style={st.machineRow}>
+            <Pressable key={m.address} onPress={() => onConnect(m.address)} disabled={busy} style={[st.machineRow, m.online === false && st.machineRowOff]}>
               <View style={[st.apIcon, st.machineIcon]}><Icon name={machineIconName(m)} size={20} color={C.accent} /></View>
               <View style={st.machineBody}>
                 <View style={st.machineNameRow}>
                   <Text style={st.machineName} numberOfLines={1}>{machineLabel(m)}</Text>
-                  {m.discovered && <View style={st.foundTag}><Dot color={C.active} glow /><Text style={st.foundText}>Found</Text></View>}
+                  {m.online === true && <View style={st.foundTag}><Dot color={C.active} glow /><Text style={st.foundText}>Online</Text></View>}
+                  {m.online === false && <View style={st.foundTag}><Dot color={C.idle} /><Text style={[st.foundText, st.offlineText]}>Offline</Text></View>}
                 </View>
                 <Text style={st.machineAddr} numberOfLines={1}>{m.platform ? `${platformLabel(m.platform)} · ` : ""}{m.address}</Text>
               </View>
@@ -569,12 +570,14 @@ const st = StyleSheet.create({
   machineSection: { color: C.textDim, fontSize: 12, fontWeight: "600", letterSpacing: 0.4, marginBottom: 10 },
   machineEmpty: { color: C.textMute, fontSize: 13, marginBottom: 12, lineHeight: 18 },
   machineRow: { flexDirection: "row", alignItems: "center", gap: 13, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 15, padding: 14, marginBottom: 10 },
+  machineRowOff: { opacity: 0.55 },
   machineIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: tint(C.accent, 0.12) },
   machineBody: { flex: 1, minWidth: 0 },
   machineNameRow: { flexDirection: "row", alignItems: "center", gap: 7 },
   machineName: { color: C.text, fontSize: 15, fontWeight: "600", flexShrink: 1 },
   foundTag: { flexDirection: "row", alignItems: "center", gap: 4 },
   foundText: { color: C.active, fontSize: 11, fontWeight: "600" },
+  offlineText: { color: C.textMute },
   machineAddr: { color: C.textDim, fontFamily: MONO, fontSize: 12, marginTop: 2 },
   addMachine: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 13, borderRadius: 13, borderWidth: 1, borderColor: tint(C.accent, 0.3), borderStyle: "dashed" },
   addMachineText: { color: C.accent, fontSize: 14, fontWeight: "600" },
