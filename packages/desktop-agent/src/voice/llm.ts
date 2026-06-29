@@ -114,7 +114,9 @@ export class OllamaLlm implements Llm {
       "(and is waiting). Output ONLY JSON.\n" +
       'If it is waiting on a choice: {"waiting": true, "question": "<the question, short>", "options": ["opt1","opt2",...]}\n' +
       'If it is NOT waiting on a user choice (just working, or finished): {"waiting": false}\n' +
-      "Ignore tool-permission prompts (those are handled elsewhere). Only real questions to the user.";
+      "This INCLUDES the agent asking permission to run a command or apply a change with a " +
+      "numbered/yes-no menu (e.g. codex 'Allow command? 1. Yes 2. No'). Only when it is " +
+      "actually stopped and waiting for the user to pick.";
     const raw = await this.#chatJson(system, `Output:\n${tail}`);
     try {
       const o = JSON.parse(raw) as { waiting?: boolean; question?: string; options?: string[] };

@@ -24,7 +24,7 @@ import type { Orchestrator } from "../orchestrator/orchestrator.js";
 import type { Stt } from "../voice/stt.js";
 import type { Llm } from "../voice/llm.js";
 import { toWav16kMono } from "../voice/convert.js";
-import { ApprovalManager, summarizeToolCall } from "../approvals/manager.js";
+import { ApprovalManager, summarizeToolCall, ruleKey } from "../approvals/manager.js";
 
 const SERVER_VERSION = "0.0.0";
 const DEFAULT_LOCALE = "sk";
@@ -109,9 +109,23 @@ export class WsServer {
           tool_name?: string;
           tool_input?: Record<string, unknown>;
           cwd?: string;
+          session_id?: string;
         };
         const tool = p.tool_name ?? "Tool";
         const { title, detail, risk, stats } = summarizeToolCall(tool, p.tool_input ?? {}, p.cwd);
+
+        // Anti-fatigue: if a standing allow-rule covers this, approve without asking.
+        const key = ruleKey(tool, title, detail);
+        const session = p.session_id || p.cwd || "global";
+        if (this.#approvals.isAutoAllowed(key, session)) {
+          res.writeHead(200, { "content-type": "application/json" }).end(
+            JSON.stringify({
+              hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow", permissionDecisionReason: "auto (Cato rule)" },
+            }),
+          );
+          return;
+        }
+
         const approval: ApprovalRequest = {
           id: ulid(),
           project: p.cwd ? basename(p.cwd) : undefined,
@@ -133,7 +147,7 @@ export class WsServer {
           if (exp.summary) approval.summary = exp.summary;
           if (exp.suggestions.length) approval.suggestions = exp.suggestions;
         }
-        const decision = await this.#approvals.request(approval);
+        const decision = await this.#approvals.request(approval, key, session);
         res.writeHead(200, { "content-type": "application/json" }).end(
           JSON.stringify({
             hookSpecificOutput: {
@@ -209,7 +223,7 @@ export class WsServer {
 
         case "approval.resolve": {
           if (!authenticated) return;
-          this.#approvals.resolve(msg.payload.id, msg.payload.decision, msg.payload.reason);
+          this.#approvals.resolve(msg.payload.id, msg.payload.decision, msg.payload.reason, msg.payload.scope);
           return;
         }
 

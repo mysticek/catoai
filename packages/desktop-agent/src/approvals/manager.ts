@@ -15,8 +15,13 @@ export interface Decision {
   reason?: string;
 }
 
+type Scope = "once" | "command" | "session";
+
 export class ApprovalManager {
-  #pending = new Map<string, { resolve: (d: Decision) => void; info: ApprovalRequest }>();
+  #pending = new Map<string, { resolve: (d: Decision) => void; info: ApprovalRequest; key: string; session: string }>();
+  // Anti-fatigue: standing allow-rules so multi-step runs don't ask 20 times.
+  #alwaysAllow = new Set<string>(); // exact command/tool keys
+  #sessionAllow = new Set<string>(); // whole worker sessions
 
   constructor(
     /** Called when a new approval needs a human (push to phone + dashboard). */
@@ -25,7 +30,12 @@ export class ApprovalManager {
     private readonly timeoutMs = 9 * 60 * 1000,
   ) {}
 
-  request(info: ApprovalRequest): Promise<Decision> {
+  /** Already covered by a standing allow-rule? → auto-approve without bothering the user. */
+  isAutoAllowed(key: string, session: string): boolean {
+    return this.#alwaysAllow.has(key) || this.#sessionAllow.has(session);
+  }
+
+  request(info: ApprovalRequest, key: string, session: string): Promise<Decision> {
     return new Promise<Decision>((resolve) => {
       const timer = setTimeout(() => {
         this.#pending.delete(info.id);
@@ -33,6 +43,8 @@ export class ApprovalManager {
       }, this.timeoutMs);
       this.#pending.set(info.id, {
         info,
+        key,
+        session,
         resolve: (d) => {
           clearTimeout(timer);
           this.#pending.delete(info.id);
@@ -43,17 +55,29 @@ export class ApprovalManager {
     });
   }
 
-  resolve(id: string, decision: "allow" | "deny", reason?: string): boolean {
+  resolve(id: string, decision: "allow" | "deny", reason?: string, scope: Scope = "once"): boolean {
     const p = this.#pending.get(id);
     if (!p) return false;
+    if (decision === "allow" && scope === "command") this.#alwaysAllow.add(p.key);
+    if (decision === "allow" && scope === "session") this.#sessionAllow.add(p.session);
     p.resolve({ decision, reason });
     return true;
+  }
+
+  /** Forget a session's allow-rule (e.g. when its worker stops). */
+  clearSession(session: string): void {
+    this.#sessionAllow.delete(session);
   }
 
   /** Currently-pending approvals (for a client that just connected). */
   list(): ApprovalRequest[] {
     return [...this.#pending.values()].map((p) => p.info);
   }
+}
+
+/** Stable key for allow-rules: exact command for Bash, tool+target otherwise. */
+export function ruleKey(tool: string, title: string, detail: string): string {
+  return tool === "Bash" ? `Bash:${detail.trim()}` : `${tool}:${title}`;
 }
 
 type Risk = "low" | "medium" | "high";

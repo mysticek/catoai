@@ -30,7 +30,17 @@ export type ClientMessage =
     >
   | Envelope<"voice.cancel", Record<string, never>>
   | Envelope<"control.action", { action: ControlAction; target?: CommandTarget; locale?: string }>
-  | Envelope<"approval.resolve", { id: string; decision: "allow" | "deny"; reason?: string }>
+  | Envelope<
+      "approval.resolve",
+      {
+        id: string;
+        decision: "allow" | "deny";
+        reason?: string;
+        /** "once" (default) · "command" = always allow this exact command ·
+         *  "session" = allow everything from this worker session. */
+        scope?: "once" | "command" | "session";
+      }
+    >
   | Envelope<"question.answer", { id: string; optionIndex: number }>
   | Envelope<"subscribe", { streams: string[] }>
   | Envelope<"ping", Record<string, never>>;
