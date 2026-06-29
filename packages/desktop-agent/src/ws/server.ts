@@ -14,6 +14,7 @@ import {
   PROTOCOL_VERSION,
   type CatoEvent,
   type ApprovalRequest,
+  type AgentQuestion,
   type ClientMessage,
   type ServerMessage,
 } from "@cato/shared";
@@ -21,6 +22,7 @@ import type { Config } from "../config.js";
 import type { EventBus } from "../bus/event-bus.js";
 import type { Orchestrator } from "../orchestrator/orchestrator.js";
 import type { Stt } from "../voice/stt.js";
+import type { Llm } from "../voice/llm.js";
 import { toWav16kMono } from "../voice/convert.js";
 import { ApprovalManager, summarizeToolCall } from "../approvals/manager.js";
 
@@ -35,12 +37,26 @@ export class WsServer {
   #authed = new Set<WebSocket>();
   // Tool-call approvals (from agents' PreToolUse gates) awaiting a human decision.
   readonly #approvals = new ApprovalManager((a) => this.#broadcastApproval(a));
+  // Conversational questions an agent is waiting on (answered via question.answer).
+  #onQuestionAnswer: (id: string, optionIndex: number) => void = () => {};
+
+  /** Wire how an answered question is delivered back to the agent (AgentManager). */
+  setQuestionResolver(fn: (id: string, optionIndex: number) => void): void {
+    this.#onQuestionAnswer = fn;
+  }
+
+  /** Push a pending conversational question to all paired phones. */
+  pushQuestion(question: AgentQuestion): void {
+    const f = frame("agent.question", { question });
+    for (const socket of this.#authed) send(socket, f);
+  }
 
   constructor(
     private readonly config: Config,
     private readonly bus: EventBus,
     private readonly orchestrator: Orchestrator,
     private readonly stt?: Stt,
+    private readonly llm?: Llm,
   ) {}
 
   /** Run local STT on base64 audio (ANY format) → text. ffmpeg normalizes to 16 kHz
@@ -105,6 +121,18 @@ export class WsServer {
           stats,
           detail,
         };
+        // Let the local LLM parse it into a plain-language summary + quick replies
+        // (bounded so a slow model never delays the approval long).
+        if (this.llm) {
+          const exp = await Promise.race([
+            this.llm.explainApproval(tool, detail, risk, DEFAULT_LOCALE),
+            new Promise<{ summary: string; suggestions: string[] }>((r) =>
+              setTimeout(() => r({ summary: "", suggestions: [] }), 5000),
+            ),
+          ]).catch(() => ({ summary: "", suggestions: [] }));
+          if (exp.summary) approval.summary = exp.summary;
+          if (exp.suggestions.length) approval.suggestions = exp.suggestions;
+        }
         const decision = await this.#approvals.request(approval);
         res.writeHead(200, { "content-type": "application/json" }).end(
           JSON.stringify({
@@ -182,6 +210,12 @@ export class WsServer {
         case "approval.resolve": {
           if (!authenticated) return;
           this.#approvals.resolve(msg.payload.id, msg.payload.decision, msg.payload.reason);
+          return;
+        }
+
+        case "question.answer": {
+          if (!authenticated) return;
+          this.#onQuestionAnswer(msg.payload.id, msg.payload.optionIndex);
           return;
         }
 

@@ -103,6 +103,29 @@ Design challenges to solve (this is where the prototype falls short):
 
 ---
 
+## 6a. The local LLM as the "understanding & next-step" layer (important)
+
+Cato runs a **local LLM** that sits between raw agent output and the UI. The app should
+**not** render raw terminal text or raw diffs as the primary content — the LLM parses
+everything into clean, structured, human-friendly data, and proposes what to do next.
+
+Apply this everywhere:
+- **Approvals:** each approval carries an LLM **`summary`** (one plain-language line:
+  what the action does + why it matters / danger) and **`suggestions`** — 2–3 tappable
+  quick replies tailored to the action (e.g. "Approve", "Deny", "Deny: use pnpm
+  instead"). The card **leads with the summary + suggestions**; the raw command/diff is
+  secondary (expand / desktop).
+- **Questions:** the agent's conversational choices are already parsed into
+  `{question, options[]}` for tappable buttons (+ the LLM can recommend an option).
+- **Status / "how is X doing":** the LLM turns the live output tail into a spoken/written
+  status summary, even mid-task.
+- **Next steps:** beyond yes/no, the LLM should surface **suggested next actions** the
+  user can tap ("run the tests", "ask it to add error handling", "commit"). Design the
+  app around acting on these suggestions, not typing raw commands.
+
+Net: the UI is a layer of **LLM-parsed cards + suggested actions**, not a terminal
+mirror. Design for meaning, with raw detail available on demand.
+
 ## 7. Mobile app — required surfaces & flows
 
 Design these (names are functional, not final):

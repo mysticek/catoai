@@ -11,9 +11,24 @@ export interface Llm {
   /** Describe what an agent is doing RIGHT NOW from its recent output (works
    *  mid-task), in the requested language. */
   describeActivity(project: string, lines: string[], locale: string): Promise<string>;
-  /** Classify a free-form command (any of en/sk/cs) into a structured intent —
-   *  used as a fallback when fast regex parsing fails. */
+  /** Classify a free-form command (any of en/sk/cs) into a structured intent. */
   classifyIntent(text: string, projects: string[]): Promise<ClassifiedIntent>;
+  /** From an agent's recent output, detect if it is ASKING the user to choose between
+   *  options (a conversational question, not a tool gate). Returns null if not. */
+  detectQuestion(lines: string[]): Promise<DetectedQuestion | null>;
+  /** Parse a tool call into a plain-language explanation + suggested quick replies,
+   *  in the requested language — so the app shows meaning, not raw text. */
+  explainApproval(tool: string, detail: string, risk: string, locale: string): Promise<ApprovalExplanation>;
+}
+
+export interface ApprovalExplanation {
+  summary: string;
+  suggestions: string[];
+}
+
+export interface DetectedQuestion {
+  question: string;
+  options: string[];
 }
 
 export interface ClassifiedIntent {
@@ -88,6 +103,47 @@ export class OllamaLlm implements Llm {
       return o && typeof o.kind === "string" ? o : { kind: "unknown" };
     } catch {
       return { kind: "unknown" };
+    }
+  }
+
+  async detectQuestion(lines: string[]): Promise<DetectedQuestion | null> {
+    const tail = lines.slice(-50).join("\n");
+    const system =
+      "You read the recent terminal output of an AI coding agent and decide whether the " +
+      "agent is RIGHT NOW asking the user to choose between options / answer a question " +
+      "(and is waiting). Output ONLY JSON.\n" +
+      'If it is waiting on a choice: {"waiting": true, "question": "<the question, short>", "options": ["opt1","opt2",...]}\n' +
+      'If it is NOT waiting on a user choice (just working, or finished): {"waiting": false}\n' +
+      "Ignore tool-permission prompts (those are handled elsewhere). Only real questions to the user.";
+    const raw = await this.#chatJson(system, `Output:\n${tail}`);
+    try {
+      const o = JSON.parse(raw) as { waiting?: boolean; question?: string; options?: string[] };
+      if (o.waiting && o.question && Array.isArray(o.options) && o.options.length >= 2) {
+        return { question: o.question, options: o.options.slice(0, 6).map(String) };
+      }
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }
+
+  async explainApproval(tool: string, detail: string, risk: string, locale: string): Promise<ApprovalExplanation> {
+    const lang = langName(locale);
+    const system =
+      `You help a developer decide whether to allow an AI coding agent's action. Output ONLY JSON: ` +
+      `{"summary": string, "suggestions": string[]}. ` +
+      `"summary" = ONE short ${lang} sentence: what the action does and why it matters (mention danger if risky). ` +
+      `"suggestions" = 2-3 short ${lang} quick replies the user could tap, e.g. "Approve", "Deny", ` +
+      `"Deny: use pnpm instead". Keep each under 5 words.`;
+    const raw = await this.#chatJson(system, `Tool: ${tool}\nRisk: ${risk}\nAction:\n${detail.slice(0, 1500)}`);
+    try {
+      const o = JSON.parse(raw) as Partial<ApprovalExplanation>;
+      return {
+        summary: typeof o.summary === "string" ? o.summary : "",
+        suggestions: Array.isArray(o.suggestions) ? o.suggestions.slice(0, 3).map(String) : [],
+      };
+    } catch {
+      return { summary: "", suggestions: [] };
     }
   }
 

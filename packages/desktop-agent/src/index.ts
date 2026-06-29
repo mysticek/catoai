@@ -27,16 +27,16 @@ async function main(): Promise<void> {
   const memory = new MemoryEngine(pool, embedder, (e) => bus.emit(e));
   console.log(`[cato] embeddings: ${embedder.kind} (dim ${embedder.dim})`);
 
-  // Agent Manager: the always-on process WATCHES workers itself (auto-discovers
-  // user tmux sessions, captures their output into memory via rendered snapshots).
+  const llm = await createLlm(config.llmModel);
+  console.log(`[cato] LLM: ${llm ? llm.kind + " (" + config.llmModel + ")" : "none (no chat model)"}`);
+
+  // Agent Manager: the always-on process WATCHES workers itself (auto-discovers user
+  // tmux sessions, captures output, and detects conversational questions they wait on).
   const manager = new AgentManager(memory, {
     workspaceRoot: config.workspaceRoot,
+    llm: llm ?? undefined,
     onLog: (m) => console.log(`[agents] ${m}`),
   });
-  manager.start();
-
-  const llm = await createLlm(config.llmModel);
-  console.log(`[cato] LLM summaries: ${llm ? llm.kind + " (" + config.llmModel + ")" : "heuristic (no chat model)"}`);
 
   // Worker control is tmux in practice: text via send-keys, "stop" via Ctrl-C.
   const control: WorkerControl = {
@@ -49,16 +49,19 @@ async function main(): Promise<void> {
   });
 
   // Worker recovery: detect crashes and resurrect workers from checkpoints.
-  const recovery = new RecoveryMonitor(memory, control, {
-    onLog: (m) => console.log(m),
-  });
+  const recovery = new RecoveryMonitor(memory, control, { onLog: (m) => console.log(m) });
   recovery.start();
 
   const stt = createStt(config.sttBin, config.sttModel);
   console.log(`[cato] STT: ${stt ? stt.kind : "disabled (no whisper model)"}`);
 
-  const ws = new WsServer(config, bus, orchestrator, stt ?? undefined);
+  const ws = new WsServer(config, bus, orchestrator, stt ?? undefined, llm ?? undefined);
   ws.start();
+
+  // Wire conversational-question flow: manager detects → phones; phones answer → agent.
+  manager.setOnQuestion((q) => ws.pushQuestion(q));
+  ws.setQuestionResolver((id, i) => void manager.answerQuestion(id, i));
+  manager.start();
 
   console.log("[cato] desktop agent up. Cato remembers. Workers implement.");
 

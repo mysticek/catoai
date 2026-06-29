@@ -31,6 +31,7 @@ export type ClientMessage =
   | Envelope<"voice.cancel", Record<string, never>>
   | Envelope<"control.action", { action: ControlAction; target?: CommandTarget; locale?: string }>
   | Envelope<"approval.resolve", { id: string; decision: "allow" | "deny"; reason?: string }>
+  | Envelope<"question.answer", { id: string; optionIndex: number }>
   | Envelope<"subscribe", { streams: string[] }>
   | Envelope<"ping", Record<string, never>>;
 
@@ -48,6 +49,10 @@ export interface ApprovalRequest {
   stats: string;
   /** The full command / diff — collapsed on the card, expand to review. */
   detail: string;
+  /** LLM-parsed plain-language explanation of what this does (for nice display). */
+  summary?: string;
+  /** LLM-suggested quick actions/replies (e.g. "Approve", "Deny: add tests too"). */
+  suggestions?: string[];
 }
 
 // ---- Server -> Client -------------------------------------------------------
@@ -70,7 +75,16 @@ export type ServerMessage =
   | Envelope<"status.update", { projects: ProjectStatus[] }>
   | Envelope<"event.push", { event: CatoEvent }>
   | Envelope<"approval.request", { approval: ApprovalRequest }>
+  | Envelope<"agent.question", { question: AgentQuestion }>
   | Envelope<"error", { code: string; message: string }>
   | Envelope<"pong", Record<string, never>>;
+
+/** A conversational choice an agent is waiting on (not a tool gate). */
+export interface AgentQuestion {
+  id: string;
+  project?: string;
+  question: string;
+  options: string[];
+}
 
 export type AnyMessage = ClientMessage | ServerMessage;

@@ -12,12 +12,15 @@
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { ulid } from "ulid";
+import type { AgentQuestion } from "@cato/shared";
 import type { MemoryEngine } from "../memory/memory-engine.js";
+import type { Llm } from "../voice/llm.js";
 import { SnapshotCaptureSource } from "../capture/snapshot.js";
 import type { CaptureSource } from "../capture/source.js";
 import { PROFILES } from "./profiles.js";
 import {
-  listAllSessions, capturePaneHistory, newShellSession, sendLine, SESSION_PREFIX, ADOPT_PREFIX,
+  listAllSessions, capturePaneHistory, capturePaneVisible, newShellSession, sendLine,
+  SESSION_PREFIX, ADOPT_PREFIX,
 } from "../tmux/tmux.js";
 
 interface Tracked {
@@ -25,6 +28,9 @@ interface Tracked {
   projectId: string;
   projectName: string;
   source: CaptureSource;
+  lastVisible: string;
+  stable: number;
+  questionId?: string;
 }
 
 export interface SpawnResult {
@@ -37,15 +43,20 @@ export interface AgentManagerOptions {
   discoverMs?: number;
   /** Where to look for project folders when voice-spawning a worker. */
   workspaceRoot?: string;
+  /** LLM used to detect conversational questions an agent is waiting on. */
+  llm?: Llm;
   onLog?: (msg: string) => void;
 }
 
 export class AgentManager {
   #tracked = new Map<string, Tracked>(); // key: tmux session name
+  #pendingQuestions = new Map<string, { target: string; options: string[] }>();
+  #onQuestion: (q: AgentQuestion) => void = () => {};
   #timer: ReturnType<typeof setInterval> | undefined;
   #busy = false;
   readonly #discoverMs: number;
   readonly #workspaceRoot: string;
+  readonly #llm: Llm | undefined;
   readonly #log: (m: string) => void;
 
   constructor(
@@ -54,13 +65,58 @@ export class AgentManager {
   ) {
     this.#discoverMs = opts.discoverMs ?? 2500;
     this.#workspaceRoot = opts.workspaceRoot ?? process.cwd();
+    this.#llm = opts.llm;
     this.#log = opts.onLog ?? (() => {});
+  }
+
+  /** Called when an agent is waiting on a conversational choice → push to phones. */
+  setOnQuestion(fn: (q: AgentQuestion) => void): void {
+    this.#onQuestion = fn;
+  }
+
+  /** Answer a pending conversational question by sending the chosen option to the agent. */
+  async answerQuestion(id: string, optionIndex: number): Promise<void> {
+    const p = this.#pendingQuestions.get(id);
+    if (!p) return;
+    this.#pendingQuestions.delete(id);
+    for (const t of this.#tracked.values()) if (t.questionId === id) t.questionId = undefined;
+    await sendLine(p.target, p.options[optionIndex] ?? String(optionIndex + 1));
   }
 
   start(): void {
     if (this.#timer) return;
-    this.#timer = setInterval(() => void this.#discover(), this.#discoverMs);
-    void this.#discover();
+    this.#timer = setInterval(() => void this.#tick(), this.#discoverMs);
+    void this.#tick();
+  }
+
+  async #tick(): Promise<void> {
+    await this.#discover();
+    if (this.#llm) await this.#checkQuestions();
+  }
+
+  /** When a worker's screen goes STABLE, ask the LLM if it's waiting on a choice. */
+  async #checkQuestions(): Promise<void> {
+    for (const [session, t] of this.#tracked) {
+      const vis = (await capturePaneVisible(session)) ?? "";
+      if (vis !== t.lastVisible) {
+        t.lastVisible = vis;
+        t.stable = 0;
+        if (t.questionId) { this.#pendingQuestions.delete(t.questionId); t.questionId = undefined; }
+        continue;
+      }
+      t.stable++;
+      // Analyze once, the moment it becomes stable (and not already asked).
+      if (t.stable === 2 && !t.questionId && vis.trim()) {
+        const q = await this.#llm!.detectQuestion(vis.split("\n")).catch(() => null);
+        if (q) {
+          const id = ulid();
+          t.questionId = id;
+          this.#pendingQuestions.set(id, { target: session, options: q.options });
+          this.#onQuestion({ id, project: t.projectName, question: q.question, options: q.options });
+          this.#log(`question on ${t.projectName}: ${q.question} [${q.options.join(" / ")}]`);
+        }
+      }
+    }
   }
 
   async stop(): Promise<void> {
@@ -110,7 +166,7 @@ export class AgentManager {
     }
 
     const source = new SnapshotCaptureSource(session, { pollMs: 1200 });
-    this.#tracked.set(session, { workerId, projectId, projectName, source });
+    this.#tracked.set(session, { workerId, projectId, projectName, source, lastVisible: "", stable: 0 });
     this.#log(`adopted ${session} (project=${projectName})`);
     void this.#ingest(source, { workerId, projectId, projectName });
   }
@@ -137,7 +193,7 @@ export class AgentManager {
       tmuxTarget: target, launchCommand: profile.command, taskId,
     });
     const source = new SnapshotCaptureSource(target, { pollMs: 1200 });
-    this.#tracked.set(target, { workerId, projectId, projectName: project, source });
+    this.#tracked.set(target, { workerId, projectId, projectName: project, source, lastVisible: "", stable: 0 });
     this.#log(`spawned ${agentKind} for ${project} in ${target}`);
     void this.#ingest(source, { workerId, projectId, projectName: project });
     return { ok: true, cwd };
