@@ -1,0 +1,24 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# env / secrets
+.env
+.env.local
+*.local
+
+# logs
+*.log
+npm-debug.log*
+
+# os
+.DS_Store
+
+# expo / rn
+.expo/
+.expo-shared/
+ios/
+android/
+
+# data
+pgdata/

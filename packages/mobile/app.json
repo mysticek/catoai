@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Cato",
+    "slug": "cato",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Cato needs the microphone for voice commands."
+      }
+    },
+    "android": {
+      "permissions": ["RECORD_AUDIO"]
+    },
+    "extra": {
+      "//": "Set your desktop agent address + pairing token here (or via the in-app field).",
+      "desktopWsUrl": "ws://192.168.1.10:8787/v1",
+      "pairingToken": "changeme"
+    }
+  }
+}
