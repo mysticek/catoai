@@ -6,6 +6,7 @@
 
 import { WebSocketServer, type WebSocket } from "ws";
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
+import { hostname } from "node:os";
 import { ulid } from "ulid";
 import { writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -210,7 +211,7 @@ export class WsServer {
             socket,
             frame(
               "welcome",
-              { sessionId: ulid(), serverVersion: SERVER_VERSION, projects: [] },
+              { sessionId: ulid(), serverVersion: SERVER_VERSION, projects: [], host: hostname(), platform: process.platform },
               msg.id,
             ),
           );
@@ -218,6 +219,8 @@ export class WsServer {
           for (const approval of this.#approvals.list()) {
             send(socket, frame("approval.request", { approval }));
           }
+          // Send the current project statuses so the home screen isn't empty on connect.
+          void this.#pushInitialStatus(socket);
           return;
         }
 
@@ -246,6 +249,11 @@ export class WsServer {
         }
       }
     });
+  }
+
+  async #pushInitialStatus(socket: WebSocket): Promise<void> {
+    const projects = await this.orchestrator.statuses().catch(() => []);
+    if (projects.length) send(socket, frame("status.update", { projects }));
   }
 
   /** Route a voice command / control action through the Orchestrator. */

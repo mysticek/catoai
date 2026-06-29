@@ -82,6 +82,11 @@ export class Orchestrator {
     }
   }
 
+  /** Current per-project statuses (for the welcome/initial sync). */
+  async statuses(): Promise<ProjectStatus[]> {
+    return this.memory.projectStatuses();
+  }
+
   /** Handle an explicit control button (continue/stop/repeat/summarize). */
   async handleControl(
     action: "continue" | "stop" | "repeat" | "summarize",

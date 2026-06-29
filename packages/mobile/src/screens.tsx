@@ -2,11 +2,12 @@
  * Cato screens — the four tabs + pair, presentational. State + wiring live in App.tsx.
  * Styling: StyleSheet only (no inline style objects); dynamic colors merged via helpers.
  */
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View, ActivityIndicator, TextInput } from "react-native";
 import { C, R, S, tint, MONO, STATUS, StatusKey } from "./theme";
 import { Icon, Dot, StatusDot, Pill, RiskBadge, SectionLabel, Card, Btn, IconChip, L } from "./ui";
 import type { ProjectStatus, ApprovalRequest, ActivityEvent } from "./catoClient";
+import { type Machine, platformLabel } from "./machines";
 
 export type Tab = "talk" | "approvals" | "activity" | "projects";
 
@@ -366,37 +367,73 @@ export function ProjectsScreen({ projects, onOpen, onStart }: { projects: Projec
 
 // ----- PAIR -------------------------------------------------------------------
 
-export function PairScreen({ url, onChangeUrl, onConnect, connecting }: { url: string; onChangeUrl: (v: string) => void; onConnect: () => void; connecting: boolean }) {
+const machineIconName = (m: Machine): Parameters<typeof Icon>[0]["name"] =>
+  m.platform === "darwin" ? "apple" : m.platform === "win32" ? "windows" : m.platform === "linux" ? "terminal" : "desktop";
+
+export function PairScreen({
+  machines, onConnect, onAdd, onRelay, connectingTo,
+}: {
+  machines: Machine[];
+  onConnect: (address: string) => void;
+  onAdd: (address: string) => void;
+  onRelay: () => void;
+  connectingTo?: string;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [addr, setAddr] = useState("");
   return (
-    <View style={st.pairWrap}>
+    <ScrollView contentContainerStyle={st.pairWrap} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
       <View style={st.spacer40} />
       <View style={st.pairLogo}><Icon name="shield" size={34} color={C.onAccent} /></View>
-      <Text style={st.pairTitle}>Link your desktop</Text>
-      <Text style={st.pairSub}>Cato runs on your computer. Enter its address to connect this phone.</Text>
+      <Text style={st.pairTitle}>Connect to Cato</Text>
+      <Text style={st.pairSub}>Cato runs on your computer. Pick a machine to control.</Text>
 
-      <View style={st.pairCard}>
-        <View style={[st.apIcon, st.pairIcon, { backgroundColor: tint(C.accent, 0.12) }]}><Icon name="desktop" size={22} color={C.accent} /></View>
-        <View style={st.pairCardBody}>
-          <Text style={st.pairCardTitle}>Desktop address</Text>
-          <TextInput value={url} onChangeText={onChangeUrl} autoCapitalize="none" autoCorrect={false} style={st.pairInput} placeholder="ws://192.168.x.x:8787/v1" placeholderTextColor={C.textMute} />
-        </View>
+      <View style={st.machineList}>
+        <Text style={st.machineSection}>YOUR MACHINES</Text>
+        {machines.length === 0 && !adding && <Text style={st.machineEmpty}>No machines yet — add your desktop's address.</Text>}
+        {machines.map((m) => {
+          const busy = connectingTo === m.address;
+          return (
+            <Pressable key={m.address} onPress={() => onConnect(m.address)} disabled={busy} style={st.machineRow}>
+              <View style={[st.apIcon, st.machineIcon]}><Icon name={machineIconName(m)} size={20} color={C.accent} /></View>
+              <View style={st.machineBody}>
+                <Text style={st.machineName} numberOfLines={1}>{m.name || "Cato desktop"}</Text>
+                <Text style={st.machineAddr} numberOfLines={1}>{m.platform ? `${platformLabel(m.platform)} · ` : ""}{m.address}</Text>
+              </View>
+              {busy ? <ActivityIndicator color={C.accent} /> : <Icon name="caret" size={20} color={C.textFaint} />}
+            </Pressable>
+          );
+        })}
+
+        {adding ? (
+          <View style={st.addBox}>
+            <TextInput value={addr} onChangeText={setAddr} autoFocus autoCapitalize="none" autoCorrect={false}
+              placeholder="ws://192.168.x.x:8787/v1" placeholderTextColor={C.textMute} style={st.addInput} />
+            <View style={st.addRow}>
+              <Btn label="Cancel" kind="ghost" flex={1} onPress={() => { setAdding(false); setAddr(""); }} />
+              <Btn label="Add" kind="accent" flex={1} icon="plus" onPress={() => { const a = addr.trim(); if (a) { onAdd(a); setAddr(""); setAdding(false); } }} />
+            </View>
+          </View>
+        ) : (
+          <Pressable onPress={() => setAdding(true)} style={st.addMachine}>
+            <Icon name="plus" size={18} color={C.accent} />
+            <Text style={st.addMachineText}>Add a machine</Text>
+          </Pressable>
+        )}
       </View>
 
-      <Pressable onPress={onConnect} style={st.pairBtn}>
-        {connecting ? <ActivityIndicator color={C.onAccent} /> : <><Icon name="link" size={17} color={C.onAccent} /><Text style={st.pairBtnText}>Pair with this Mac</Text></>}
-      </Pressable>
-
-      <View style={st.relayCard}>
-        <View style={[st.apIcon, st.relayIcon, { backgroundColor: tint(C.accent, 0.12) }]}><Icon name="globe" size={19} color={C.accent} /></View>
+      <Pressable onPress={onRelay} style={st.relayCard}>
+        <View style={[st.apIcon, st.relayIcon]}><Icon name="globe" size={19} color={C.accent} /></View>
         <View style={L.flex1}>
           <View style={st.relayTitleRow}>
-            <Text style={st.relayTitle}>Away from home? Cato Relay</Text>
+            <Text style={st.relayTitle}>Cato Relay</Text>
             <Pill bg={C.accent}><Text style={st.proText}>PRO</Text></Pill>
           </View>
           <Text style={st.relaySub}>Reach your desktop from any network — encrypted.</Text>
         </View>
-      </View>
-    </View>
+        <Icon name="caret" size={15} color={C.textFaint} />
+      </Pressable>
+    </ScrollView>
   );
 }
 
@@ -523,8 +560,21 @@ const st = StyleSheet.create({
   projSummary: { color: C.textDim, fontSize: 12.5 },
 
   // pair
-  pairWrap: { flex: 1, paddingHorizontal: 30, alignItems: "center" },
+  pairWrap: { paddingHorizontal: 24, alignItems: "center", flexGrow: 1, paddingBottom: 40 },
   spacer40: { height: 40 },
+  machineList: { width: "100%", marginBottom: 8 },
+  machineSection: { color: C.textDim, fontSize: 12, fontWeight: "600", letterSpacing: 0.4, marginBottom: 10 },
+  machineEmpty: { color: C.textMute, fontSize: 13, marginBottom: 12, lineHeight: 18 },
+  machineRow: { flexDirection: "row", alignItems: "center", gap: 13, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 15, padding: 14, marginBottom: 10 },
+  machineIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: tint(C.accent, 0.12) },
+  machineBody: { flex: 1, minWidth: 0 },
+  machineName: { color: C.text, fontSize: 15, fontWeight: "600" },
+  machineAddr: { color: C.textDim, fontFamily: MONO, fontSize: 12, marginTop: 2 },
+  addMachine: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 13, borderRadius: 13, borderWidth: 1, borderColor: tint(C.accent, 0.3), borderStyle: "dashed" },
+  addMachineText: { color: C.accent, fontSize: 14, fontWeight: "600" },
+  addBox: { backgroundColor: C.card, borderWidth: 1, borderColor: tint(C.accent, 0.3), borderRadius: 14, padding: 12 },
+  addInput: { color: C.text, fontFamily: MONO, fontSize: 13, backgroundColor: C.black, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, marginBottom: 10 },
+  addRow: { flexDirection: "row", gap: 10 },
   pairLogo: { width: 62, height: 62, borderRadius: 18, backgroundColor: C.accent, alignItems: "center", justifyContent: "center", marginBottom: 24 },
   pairTitle: { color: C.text, fontSize: 25, fontWeight: "700", letterSpacing: -0.5, marginBottom: 9 },
   pairSub: { color: C.textDim, fontSize: 14.5, textAlign: "center", lineHeight: 21, marginBottom: 24 },
@@ -535,8 +585,8 @@ const st = StyleSheet.create({
   pairInput: { color: C.textDim, fontFamily: MONO, fontSize: 13, marginTop: 4, padding: 0 },
   pairBtn: { width: "100%", height: 54, backgroundColor: C.accent, borderRadius: 15, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   pairBtnText: { color: C.onAccent, fontWeight: "600", fontSize: 16 },
-  relayCard: { width: "100%", backgroundColor: C.card, borderWidth: 1, borderColor: tint(C.accent, 0.22), borderRadius: 14, padding: 13, flexDirection: "row", alignItems: "center", gap: 12, marginTop: "auto", marginBottom: 20 },
-  relayIcon: { width: 38, height: 38, borderRadius: 11 },
+  relayCard: { width: "100%", backgroundColor: C.card, borderWidth: 1, borderColor: tint(C.accent, 0.22), borderRadius: 14, padding: 13, flexDirection: "row", alignItems: "center", gap: 12, marginTop: 24 },
+  relayIcon: { width: 38, height: 38, borderRadius: 11, backgroundColor: tint(C.accent, 0.12) },
   relayTitleRow: { flexDirection: "row", alignItems: "center", gap: 7 },
   relayTitle: { color: C.text, fontWeight: "600", fontSize: 13.5 },
   relaySub: { color: C.textDim, fontSize: 12, marginTop: 2 },

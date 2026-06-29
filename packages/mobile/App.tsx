@@ -4,7 +4,7 @@
  * four tabs (Talk / Approvals / Activity / Projects). Implements Cato.dc.html.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Modal, Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { Alert, Modal, Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as Speech from "expo-speech";
 import Constants from "expo-constants";
@@ -17,15 +17,17 @@ import {
   TalkScreen, ApprovalsScreen, ActivityScreen, ProjectsScreen, PairScreen, TabBar, ListeningOverlay, AppBar, type Tab,
 } from "./src/screens";
 import { ApprovalDetailSheet, MultiChoiceSheet, StartAgentSheet } from "./src/sheets";
+import { loadMachines, saveMachines, upsert, type Machine } from "./src/machines";
 
 const extra = (Constants.expoConfig?.extra ?? {}) as { desktopWsUrl?: string; pairingToken?: string };
 const TTS: Record<string, string> = { en: "en-US", sk: "sk-SK", cs: "cs-CZ" };
 
 export default function App() {
-  const [wsUrl, setWsUrl] = useState(extra.desktopWsUrl ?? "ws://192.168.68.102:8787/v1");
+  const [machines, setMachines] = useState<Machine[]>([]);
+  const [active, setActive] = useState("");
+  const [connectingTo, setConnectingTo] = useState<string | undefined>();
   const [locale, setLocale] = useState("en");
   const [connected, setConnected] = useState(false);
-  const [connecting, setConnecting] = useState(false);
 
   const [tab, setTab] = useState<Tab>("talk");
   const [projects, setProjects] = useState<ProjectStatus[]>([]);
@@ -45,11 +47,20 @@ export default function App() {
   const client = useRef<CatoClient | null>(null);
   const recorder = useAudioRecorder(REC_OPTIONS);
 
-  const connect = useCallback(() => {
+  const connect = useCallback((address: string) => {
     client.current?.close();
-    setConnecting(true);
-    const c = new CatoClient(wsUrl, extra.pairingToken ?? "changeme", {
-      onWelcome: (ps) => { setConnected(true); setConnecting(false); setProjects(ps); },
+    setActive(address);
+    setConnectingTo(address);
+    const c = new CatoClient(address, extra.pairingToken ?? "changeme", {
+      onWelcome: (ps, meta) => {
+        setConnected(true); setConnectingTo(undefined); setProjects(ps);
+        // Learn the machine's real name + platform and remember it.
+        setMachines((prev) => {
+          const next = upsert(prev, { address, name: meta.host, platform: meta.platform, lastSeen: Date.now() });
+          void saveMachines(next);
+          return next;
+        });
+      },
       onStatus: setProjects,
       onTranscript: (t, final) => { setTranscript(t); if (final) setExchange((e) => ({ ...e, user: t })); },
       onSpeak: (text, loc) => { setBusy(false); setExchange((e) => ({ ...e, cato: text })); Speech.speak(text, { language: TTS[loc] ?? loc }); },
@@ -59,14 +70,34 @@ export default function App() {
       onQuestion: (q) => setQuestion(q),
       onActivity: (e) => setActivity((prev) => [e, ...prev].slice(0, 60)),
       onError: () => setBusy(false),
-      onClose: () => { setConnected(false); setConnecting(false); },
+      onClose: () => { setConnected(false); setConnectingTo(undefined); },
     });
     c.connect();
     client.current = c;
-  }, [wsUrl]);
+  }, []);
 
-  // Auto-connect on mount; clean up on unmount.
-  useEffect(() => { connect(); return () => client.current?.close(); }, [connect]);
+  const addMachine = useCallback((address: string) => {
+    setMachines((prev) => { const next = upsert(prev, { address }); void saveMachines(next); return next; });
+    connect(address);
+  }, [connect]);
+
+  const onRelay = useCallback(() => {
+    Alert.alert("Cato Relay · PRO", "Reach your desktop from any network with push notifications, even when the app is closed. Coming soon.");
+  }, []);
+
+  // Load saved machines on mount; auto-connect to the most recent one.
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      let list = await loadMachines();
+      if (list.length === 0 && extra.desktopWsUrl) list = [{ address: extra.desktopWsUrl }];
+      if (!mounted) return;
+      setMachines(list);
+      const recent = [...list].sort((a, b) => (b.lastSeen ?? 0) - (a.lastSeen ?? 0))[0];
+      if (recent) connect(recent.address);
+    })();
+    return () => { mounted = false; client.current?.close(); };
+  }, [connect]);
 
   const onPressIn = useCallback(async () => {
     try {
@@ -121,7 +152,7 @@ export default function App() {
     return (
       <SafeAreaView style={s.root}>
         <StatusBar style="light" />
-        <PairScreen url={wsUrl} onChangeUrl={setWsUrl} onConnect={connect} connecting={connecting} />
+        <PairScreen machines={machines} onConnect={connect} onAdd={addMachine} onRelay={onRelay} connectingTo={connectingTo} />
       </SafeAreaView>
     );
   }
@@ -156,7 +187,7 @@ export default function App() {
 
       <SettingsSheet
         open={settingsOpen} onClose={() => setSettingsOpen(false)}
-        locale={locale} onLocale={setLocale} url={wsUrl} connected={connected}
+        locale={locale} onLocale={setLocale} url={active} connected={connected}
         onControl={(a) => client.current?.sendControl(a, locale)}
       />
     </SafeAreaView>

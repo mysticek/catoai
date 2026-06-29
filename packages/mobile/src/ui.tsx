@@ -52,6 +52,9 @@ const ICON: Record<string, IoniconName> = {
   gear: "settings",
   plus: "add",
   undo: "arrow-undo",
+  apple: "logo-apple",
+  laptop: "laptop",
+  windows: "logo-windows",
 };
 
 export function Icon({ name, size = 18, color = C.text }: { name: keyof typeof ICON; size?: number; color?: string }) {
