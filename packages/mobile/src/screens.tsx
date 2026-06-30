@@ -538,10 +538,10 @@ export function ListeningOverlay({ transcript }: { transcript?: string }) {
 // ----- TERMINAL (live 1:1 mirror, two-way) -----------------------------------
 
 export function TerminalScreen({
-  project, title, text, onInput, onRename, onClose, onCloseSession,
+  project, title, text, onInput, onRename, onClose, onCloseSession, onOpenDesktop,
 }: {
   project: string; title?: string; text: string;
-  onInput: (text: string) => void; onRename?: (name: string) => void; onClose: () => void; onCloseSession?: () => void;
+  onInput: (text: string) => void; onRename?: (name: string) => void; onClose: () => void; onCloseSession?: () => void; onOpenDesktop?: () => void;
 }) {
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState(false);
@@ -569,6 +569,9 @@ export function TerminalScreen({
           )}
           <Dot color={C.active} glow />
           <Text style={st.termLive}>live</Text>
+          {onOpenDesktop && (
+            <Pressable hitSlop={8} onPress={onOpenDesktop}><Icon name="laptop" size={19} color={C.textDim} /></Pressable>
+          )}
           {onCloseSession && (
             <Pressable
               hitSlop={8}

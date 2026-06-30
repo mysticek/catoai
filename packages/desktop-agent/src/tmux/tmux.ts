@@ -80,6 +80,20 @@ export async function killSession(name: string): Promise<void> {
   await exec("tmux", ["kill-session", "-t", name]).catch(() => {});
 }
 
+/** Open a real desktop terminal window attached to a session (so it's visible/usable on the
+ *  computer too). macOS: Terminal.app via osascript; Linux: a common terminal emulator. */
+export async function openInTerminal(target: string): Promise<void> {
+  const safe = target.replace(/[^A-Za-z0-9._-]/g, "");
+  if (process.platform === "darwin") {
+    await exec("osascript", [
+      "-e", `tell application "Terminal" to do script "tmux attach -t ${safe}"`,
+      "-e", `tell application "Terminal" to activate`,
+    ]);
+  } else if (process.platform === "linux") {
+    await exec("sh", ["-c", `x-terminal-emulator -e "tmux attach -t ${safe}" || gnome-terminal -- tmux attach -t ${safe} || konsole -e tmux attach -t ${safe}`]);
+  }
+}
+
 /** The current working directory of a session's active pane (its real project folder). */
 export async function paneCwd(target: string): Promise<string | null> {
   try {

@@ -275,8 +275,11 @@ export default function App() {
 
   const startAgent = useCallback((path: string, agent: string, task: string) => {
     client.current?.spawnWorker(agent, path, task);
-    setTab("projects");
-  }, []);
+    setStartOpen(false);
+    // Jump straight into the new chat's terminal once its session is up.
+    const name = path.split("/").filter(Boolean).pop() || path;
+    setTimeout(() => openProject(name), 1500);
+  }, [openProject]);
 
   // Live mDNS discovery while on the Pair screen; merge with the saved list.
   const discovered = useDiscovery(!connected);
@@ -405,6 +408,7 @@ export default function App() {
           onInput={(t) => client.current?.terminalInput(terminalProject, t)}
           onClose={() => { client.current?.terminalRelease(terminalProject); setTerminalProject(null); terminalProjectRef.current = null; setTerminalMenu(null); }}
           onCloseSession={() => { closeProject(terminalProject); client.current?.terminalRelease(terminalProject); setTerminalProject(null); terminalProjectRef.current = null; setTerminalMenu(null); }}
+          onOpenDesktop={() => client.current?.openOnDesktop(terminalProject)}
         />
       )}
       {terminalProject && terminalMenu && (

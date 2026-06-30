@@ -184,6 +184,10 @@ export class CatoClient {
   reopenSession(project: string): void {
     this.#send("session.reopen", { project });
   }
+  /** Open the chat's tmux session in a real terminal window on the computer. */
+  openOnDesktop(project: string): void {
+    this.#send("session.openDesktop", { project });
+  }
   /** Ask for all chats (running + history). */
   listProjects(): void {
     this.#send("projects.list", {});

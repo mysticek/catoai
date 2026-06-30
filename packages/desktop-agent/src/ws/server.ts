@@ -386,6 +386,9 @@ export class WsServer {
         case "session.reopen":
           if (authenticated) void this.orchestrator.reopenSession(msg.payload.project).catch(() => {});
           return;
+        case "session.openDesktop":
+          if (authenticated) void this.orchestrator.openOnDesktop(msg.payload.project).catch(() => {});
+          return;
         case "projects.list":
           if (authenticated) void this.orchestrator.projectList().then((projects) => this.#emit(socket, frame("projects.all", { projects }))).catch(() => {});
           return;

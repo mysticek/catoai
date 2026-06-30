@@ -24,6 +24,8 @@ export interface WorkerControl {
   autoSize(tmuxTarget: string): Promise<void>;
   /** Kill the session (close the chat). */
   kill(tmuxTarget: string): Promise<void>;
+  /** Open a real desktop terminal window attached to the session. */
+  openDesktop(tmuxTarget: string): Promise<void>;
 }
 
 /** Optional capabilities the Orchestrator uses when available. */
@@ -127,6 +129,12 @@ export class Orchestrator {
   async reopenSession(project: string): Promise<void> {
     const root = await this.memory.projectRoot(project);
     if (root) await this.deps.spawnWorker?.("claude-code", root);
+  }
+
+  /** Open the chat's tmux session in a real terminal window on the computer. */
+  async openOnDesktop(project: string): Promise<void> {
+    const w = await this.memory.runningWorker(project);
+    if (w?.tmuxTarget) await this.control.openDesktop(w.tmuxTarget).catch(() => {});
   }
 
   /** Type a line into a project's worker terminal (mobile → terminal). */
