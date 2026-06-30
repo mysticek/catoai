@@ -14,10 +14,30 @@ set -euo pipefail
 self="$0"; [ -L "$self" ] && self="$(readlink "$self")"
 selfdir="$(cd "$(dirname "$self")" && pwd)"
 
+case "${1:-}" in
+  help|-h|--help)
+    cat <<'USAGE'
+cato — voice-first command center for AI coding agents
+
+Usage:
+  cato                 launch your agent (claude, else codex) in this folder, watched by Cato
+  cato claude|codex …  launch a specific agent (extra args are passed through)
+  cato setup           onboard this machine: pick a workspace + get a pairing token & QR
+  cato pair            show the QR / token again to add another device
+  cato rotate          generate a NEW token (disconnects all paired devices) + show QR
+  cato doctor          diagnose the local setup (deps, models, onboarding, security)
+  cato help            show this help
+
+Run the brain:  npm start   ·   always-on:  npm run daemon:on / daemon:off
+USAGE
+    exit 0 ;;
+esac
 # `cato setup` → onboarding (workspace root + pairing token).
 if [ "${1:-}" = "setup" ]; then exec node "$selfdir/cato-setup.mjs"; fi
 # `cato pair` → show the QR/token to add another device.
 if [ "${1:-}" = "pair" ]; then exec node "$selfdir/cato-pair.mjs"; fi
+# `cato rotate` → new token (disconnects old devices).
+if [ "${1:-}" = "rotate" ]; then exec node "$selfdir/cato-rotate.mjs"; fi
 # `cato doctor` → diagnose the local setup.
 if [ "${1:-}" = "doctor" ]; then exec node "$selfdir/cato-doctor.mjs"; fi
 

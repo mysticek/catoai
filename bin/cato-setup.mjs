@@ -8,23 +8,14 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { randomBytes } from "node:crypto";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
-import { showPairing } from "./lib-pairing.mjs";
+import { showPairing, genToken } from "./lib-pairing.mjs";
 
 const DIR = join(homedir(), ".cato");
 const FILE = join(DIR, "config.json");
 const load = () => { try { return JSON.parse(readFileSync(FILE, "utf8")); } catch { return {}; } };
 const expand = (p) => p.replace(/^~(?=$|\/)/, homedir());
-
-function genToken() {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no ambiguous 0/O/1/I
-  const bytes = randomBytes(8);
-  let s = "";
-  for (let i = 0; i < 8; i++) s += alphabet[bytes[i] % alphabet.length];
-  return `${s.slice(0, 4)}-${s.slice(4)}`;
-}
 
 const cfg = load();
 const rl = createInterface({ input: stdin, output: stdout });

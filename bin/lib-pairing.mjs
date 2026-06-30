@@ -4,11 +4,21 @@ import { readFileSync, writeFileSync, mkdirSync, chmodSync } from "node:fs";
 import { homedir, hostname, networkInterfaces } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import nacl from "tweetnacl";
 import naclUtil from "tweetnacl-util";
 import qrcode from "qrcode-terminal";
 
 const DIR = join(homedir(), ".cato");
+
+/** A friendly pairing token, e.g. AB12-CD34 (no ambiguous 0/O/1/I). */
+export function genToken() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = randomBytes(8);
+  let s = "";
+  for (let i = 0; i < 8; i++) s += alphabet[bytes[i] % alphabet.length];
+  return `${s.slice(0, 4)}-${s.slice(4)}`;
+}
 
 /** Ensure the agent key pair exists; return { publicKey, secretKey } (base64). */
 function ensureKeys() {
