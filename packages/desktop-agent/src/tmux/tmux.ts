@@ -158,7 +158,8 @@ export async function capturePaneVisible(target: string): Promise<string | null>
 export async function capturePaneScreen(target: string, lines: number): Promise<string | null> {
   try {
     const back = Math.max(0, Math.min(2000, Math.floor(lines)));
-    const { stdout } = await exec("tmux", ["capture-pane", "-p", "-t", target, "-S", `-${back}`]);
+    // -e keeps ANSI colours so the phone can render greyed suggestions, highlighting, etc.
+    const { stdout } = await exec("tmux", ["capture-pane", "-p", "-e", "-t", target, "-S", `-${back}`]);
     return stdout;
   } catch {
     return null; // pane gone

@@ -8,6 +8,7 @@ import { C, R, S, tint, MONO, STATUS, StatusKey } from "./theme";
 import { Icon, Dot, StatusDot, Pill, RiskBadge, SectionLabel, Card, Btn, IconChip, L, KeyboardSafe } from "./ui";
 import type { ProjectStatus, ApprovalRequest, ActivityEvent } from "./catoClient";
 import { type Machine, platformLabel, machineLabel } from "./machines";
+import { parseAnsi, stripAnsi } from "./ansi";
 
 export type Tab = "talk" | "approvals" | "activity" | "projects";
 
@@ -554,7 +555,15 @@ export function TerminalScreen({
               a desktop terminal is also open we can't shrink it, so the content is wider —
               swipe sideways to keep the status bar + boxes intact (no broken wrapping). */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.termHScroll}>
-            <Text style={st.termText} selectable>{cleanTerminalScreen(text) || "…"}</Text>
+            <Text style={st.termText} selectable>
+              {(() => {
+                const cleaned = cleanTerminalScreen(text);
+                if (!cleaned) return "…";
+                return parseAnsi(cleaned).map((r, i) => (
+                  <Text key={i} style={r.bold ? { color: r.color, fontWeight: "700" } : { color: r.color }}>{r.text}</Text>
+                ));
+              })()}
+            </Text>
           </ScrollView>
         </ScrollView>
         <View style={st.termBar}>
@@ -579,7 +588,7 @@ export function TerminalScreen({
 export function cleanTerminalScreen(text: string): string {
   if (!text) return text;
   const lines = text.split("\n").map((l) => l.replace(/\s+$/, ""));
-  const blank = (l: string) => /^\s*$/.test(l);
+  const blank = (l: string) => /^\s*$/.test(stripAnsi(l));
   while (lines.length && blank(lines[lines.length - 1])) lines.pop(); // trailing empty pane rows
   const out: string[] = [];
   for (const l of lines) { if (blank(l) && out.length && blank(out[out.length - 1])) continue; out.push(l); }
@@ -590,7 +599,7 @@ export function cleanTerminalScreen(text: string): string {
  *  surface it as a tappable sheet instead of making the user type numbers. */
 export function parseTerminalMenu(screen: string): { question: string; options: string[]; numbers: number[] } | null {
   if (!screen) return null;
-  const lines = screen.split("\n");
+  const lines = stripAnsi(screen).split("\n");
   const hasFooter = lines.some((l) => /to (select|navigate|cancel)|↑\/↓|esc to/i.test(l));
   if (!hasFooter) return null;
   const optRe = /^\s*[›>❯]?\s*(\d+)[.)]\s+(.+?)\s*$/;
