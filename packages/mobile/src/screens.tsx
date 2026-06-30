@@ -90,17 +90,23 @@ export function TabBar({ active, onTab, approvals }: { active: Tab; onTab: (t: T
 
 // ----- TALK -------------------------------------------------------------------
 
+export interface ProjectPrefs { listen: boolean; notify: boolean; speak: boolean }
+export const DEFAULT_PREFS: ProjectPrefs = { listen: false, notify: true, speak: true };
+export type PrefKey = keyof ProjectPrefs;
+
 export function TalkScreen({
-  projects, exchange, recording, busy, hint, onPressIn, onPressOut, onOpenProject, onGoApprovals,
+  projects, exchange, recording, busy, hint, onPressIn, onPressOut, onOpenProject, onGoApprovals, prefs, onTogglePref,
 }: {
   projects: ProjectStatus[];
   exchange?: { user?: string; cato?: string };
   recording: boolean; busy: boolean; hint: string;
   onPressIn: () => void; onPressOut: () => void;
   onOpenProject: (name: string) => void; onGoApprovals: () => void; approvals: number;
+  prefs: Record<string, ProjectPrefs>; onTogglePref: (project: string, key: PrefKey) => void;
 }) {
   const needs = projects.filter((p) => p.state === "waiting" || p.state === "attention");
   const quiet = projects.filter((p) => p.state === "active" || p.state === "idle");
+  const ordered = [...needs, ...quiet]; // attention first, but every project gets its own row
   return (
     <View style={L.fill}>
       <ScrollView style={L.fill} contentContainerStyle={st.talkBody} showsVerticalScrollIndicator={false}>
@@ -112,26 +118,20 @@ export function TalkScreen({
         }>{`NEEDS YOU · ${needs.length}`}</SectionLabel>
 
         <View style={st.needsList}>
-          {needs.length === 0 && (
+          {projects.length === 0 && (
             <Card style={st.emptyCard}>
               <Icon name="check" size={22} color={C.active} />
-              <Text style={st.emptyText}>Nothing needs you right now.</Text>
+              <Text style={st.emptyText}>No projects yet — run `cato` in a folder.</Text>
             </Card>
           )}
-          {needs.map((p) => <NeedsCard key={p.name} p={p} onPress={() => onOpenProject(p.name)} />)}
-
-          {quiet.length > 0 && (
-            <View style={st.quietRow}>
-              {quiet.slice(0, 3).map((p) => (
-                <View key={p.name} style={st.quietItem}>
-                  <StatusDot state={p.state as StatusKey} glow={p.state === "active"} />
-                  <Text style={st.quietName}>{p.name}</Text>
-                </View>
-              ))}
-              <View style={L.flex1} />
-              <Text style={st.quietHint}>running quietly</Text>
-            </View>
-          )}
+          {ordered.map((p) => (
+            <ProjectCard
+              key={p.name} p={p}
+              prefs={prefs[p.name] ?? DEFAULT_PREFS}
+              onPress={() => onOpenProject(p.name)}
+              onToggle={(k) => onTogglePref(p.name, k)}
+            />
+          ))}
         </View>
 
         {exchange?.cato ? (
@@ -159,20 +159,43 @@ export function TalkScreen({
   );
 }
 
-function NeedsCard({ p, onPress }: { p: ProjectStatus; onPress: () => void }) {
-  const color = STATUS[p.state as StatusKey];
-  const label = p.state === "waiting" ? "WAITING" : "ATTENTION";
+const BADGE: Record<StatusKey, string> = { waiting: "WAITING", attention: "ATTENTION", active: "ACTIVE", idle: "IDLE" };
+
+function ProjectCard({
+  p, prefs, onPress, onToggle,
+}: {
+  p: ProjectStatus; prefs: ProjectPrefs; onPress: () => void; onToggle: (k: PrefKey) => void;
+}) {
+  const key = p.state as StatusKey;
+  const color = STATUS[key];
+  const prominent = key === "waiting" || key === "attention";
   return (
-    <Pressable onPress={onPress} style={[st.needsCard, { borderColor: tint(color, 0.3) }]}>
+    <Pressable
+      onPress={onPress}
+      style={[st.needsCard, { borderColor: prominent ? tint(color, 0.3) : C.border, backgroundColor: prominent ? C.card : C.card2 }]}
+    >
       <View style={st.needsHead}>
-        <Dot color={color} />
+        <Dot color={color} glow={key === "active"} />
         <Text style={st.needsName} numberOfLines={1}>{p.name}</Text>
-        <Pill color={color}>{label}</Pill>
+        <Pill color={color}>{BADGE[key]}</Pill>
       </View>
       <View style={st.needsFoot}>
-        <Text style={st.needsSummary} numberOfLines={1}>{p.summary || "—"}</Text>
-        <Icon name="caret" size={15} color={C.textFaint} />
+        <Text style={st.needsSummary} numberOfLines={1}>{p.summary || "running quietly"}</Text>
+        <View style={st.cardActions}>
+          {/* per-project: listen to you · notify you · speak to you */}
+          <ToggleChip name="mic" on={prefs.listen} onPress={() => onToggle("listen")} />
+          <ToggleChip name="bell" on={prefs.notify} onPress={() => onToggle("notify")} />
+          <ToggleChip name="speaker" on={prefs.speak} onPress={() => onToggle("speak")} />
+        </View>
       </View>
+    </Pressable>
+  );
+}
+
+function ToggleChip({ name, on, onPress }: { name: "mic" | "bell" | "speaker"; on: boolean; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} hitSlop={4} style={[st.toggleChip, on ? st.toggleChipOn : st.toggleChipOff]}>
+      <Icon name={name} size={15} color={on ? C.accent : C.textDim} />
     </Pressable>
   );
 }
@@ -553,6 +576,10 @@ const st = StyleSheet.create({
   needsName: { color: C.text, fontSize: 15, fontWeight: "600", flex: 1 },
   needsFoot: { flexDirection: "row", alignItems: "center", gap: 9 },
   needsSummary: { color: C.textDim, fontSize: 12.5, flex: 1 },
+  cardActions: { flexDirection: "row", gap: 6, flexShrink: 0 },
+  toggleChip: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center" },
+  toggleChipOn: { backgroundColor: tint(C.accent, 0.16) },
+  toggleChipOff: { backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
   miniLogo: { width: 26, height: 26, borderRadius: 8, backgroundColor: C.accent, alignItems: "center", justifyContent: "center" },
   bubble: { maxWidth: "84%", backgroundColor: tint(C.accent, 0.1), borderWidth: 1, borderColor: tint(C.accent, 0.22), borderRadius: 18, borderTopLeftRadius: 4, padding: 13, marginLeft: 9 },
   bubbleText: { color: "#e6e2f5", fontSize: 14, lineHeight: 20 },

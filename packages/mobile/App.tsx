@@ -14,7 +14,8 @@ import { readBase64, REC_OPTIONS } from "./src/audio";
 import { C, tint } from "./src/theme";
 import { Icon, Pill, L, BottomSheet } from "./src/ui";
 import {
-  TalkScreen, ApprovalsScreen, ActivityScreen, ProjectsScreen, PairScreen, TerminalScreen, TabBar, ListeningOverlay, AppBar, type Tab,
+  TalkScreen, ApprovalsScreen, ActivityScreen, ProjectsScreen, PairScreen, TerminalScreen, TabBar, ListeningOverlay, AppBar,
+  DEFAULT_PREFS, type Tab, type ProjectPrefs, type PrefKey,
 } from "./src/screens";
 import { ApprovalDetailSheet, MultiChoiceSheet, StartAgentSheet, TokenSheet, SetupGateSheet } from "./src/sheets";
 import { loadMachines, saveMachines, upsert, applyIdentity, fetchMachineInfo, saveToken, type Machine } from "./src/machines";
@@ -48,6 +49,14 @@ export default function App() {
   const [gateFor, setGateFor] = useState<string | null>(null); // address that needs `cato setup`
   const [terminalProject, setTerminalProject] = useState<string | null>(null); // open terminal mirror
   const [terminalText, setTerminalText] = useState("");
+  const [prefs, setPrefs] = useState<Record<string, ProjectPrefs>>({}); // per-project listen/notify/speak
+
+  const togglePref = useCallback((project: string, key: PrefKey) => {
+    setPrefs((cur) => {
+      const p = cur[project] ?? DEFAULT_PREFS;
+      return { ...cur, [project]: { ...p, [key]: !p[key] } };
+    });
+  }, []);
 
   const [reconnecting, setReconnecting] = useState(false);
   const client = useRef<CatoClient | null>(null);
@@ -300,6 +309,7 @@ export default function App() {
             projects={projects} exchange={exchange} recording={recording} busy={busy} hint={hint}
             onPressIn={onPressIn} onPressOut={onPressOut} onOpenProject={openProject}
             onGoApprovals={() => setTab("approvals")} approvals={pendingCount}
+            prefs={prefs} onTogglePref={togglePref}
           />
         </View>
       )}
