@@ -328,6 +328,14 @@ export default function App() {
     setRefreshing(false);
   }, [allMachines]);
 
+  // Pull-to-refresh on the home screen → re-request project statuses.
+  const [homeRefreshing, setHomeRefreshing] = useState(false);
+  const refreshHome = useCallback(() => {
+    setHomeRefreshing(true);
+    client.current?.refreshStatus();
+    setTimeout(() => setHomeRefreshing(false), 700);
+  }, []);
+
   const pendingCount = approvals.length;
   const hint = locale === "sk" ? "Podrž a hovor · alebo „Cato…“" : "Hold to talk · or “Cato…”";
 
@@ -365,6 +373,7 @@ export default function App() {
             onPressIn={onPressIn} onPressOut={onPressOut} onOpenProject={openProject}
             onGoApprovals={() => setTab("approvals")} approvals={pendingCount}
             prefs={prefs} onTogglePref={togglePref} displayName={displayName}
+            refreshing={homeRefreshing} onRefresh={refreshHome}
           />
         </View>
       )}

@@ -96,7 +96,7 @@ export const DEFAULT_PREFS: ProjectPrefs = { listen: false, notify: true, speak:
 export type PrefKey = keyof ProjectPrefs;
 
 export function TalkScreen({
-  projects, exchange, recording, busy, hint, onPressIn, onPressOut, onOpenProject, onGoApprovals, prefs, onTogglePref, displayName,
+  projects, exchange, recording, busy, hint, onPressIn, onPressOut, onOpenProject, onGoApprovals, prefs, onTogglePref, displayName, refreshing, onRefresh,
 }: {
   projects: ProjectStatus[];
   exchange?: { user?: string; cato?: string };
@@ -105,13 +105,17 @@ export function TalkScreen({
   onOpenProject: (name: string) => void; onGoApprovals: () => void; approvals: number;
   prefs: Record<string, ProjectPrefs>; onTogglePref: (project: string, key: PrefKey) => void;
   displayName?: (name: string) => string;
+  refreshing?: boolean; onRefresh?: () => void;
 }) {
   const needs = projects.filter((p) => p.state === "waiting" || p.state === "attention");
   const quiet = projects.filter((p) => p.state === "active" || p.state === "idle");
   const ordered = [...needs, ...quiet]; // attention first, but every project gets its own row
   return (
     <View style={L.fill}>
-      <ScrollView style={L.fill} contentContainerStyle={st.talkBody} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={L.fill} contentContainerStyle={st.talkBody} showsVerticalScrollIndicator={false}
+        refreshControl={onRefresh ? <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={C.accent} colors={[C.accent]} /> : undefined}
+      >
         <SectionLabel right={
           <Pressable onPress={onGoApprovals} style={st.linkBtn}>
             <Text style={st.linkBtnText}>All {projects.length} projects</Text>

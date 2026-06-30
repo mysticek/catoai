@@ -374,6 +374,9 @@ export class WsServer {
         case "terminal.release":
           if (authenticated) void this.orchestrator.terminalRelease(msg.payload.project);
           return;
+        case "status.get":
+          if (authenticated) void this.orchestrator.statuses().then((projects) => this.#emit(socket, frame("status.update", { projects }))).catch(() => {});
+          return;
         default:
           if (!authenticated) { send(socket, frame("error", { code: "unauthorized", message: "say hello first" })); return; }
           void this.#route(socket, msg);

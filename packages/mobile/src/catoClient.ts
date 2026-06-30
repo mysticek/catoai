@@ -163,6 +163,11 @@ export class CatoClient {
     this.#send("terminal.release", { project });
   }
 
+  /** Ask the agent to re-send the current project statuses (pull-to-refresh). */
+  refreshStatus(): void {
+    this.#send("status.get", {});
+  }
+
   /** Send a frame — encrypted (wrapped in `enc`) once an E2E session exists, else plain. */
   #send(type: string, payload: unknown): void {
     if (this.#sessionKey) {

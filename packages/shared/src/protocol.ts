@@ -55,6 +55,7 @@ export type ClientMessage =
   | Envelope<"terminal.key", { project: string; key: string }>
   | Envelope<"terminal.release", { project: string }>
   | Envelope<"subscribe", { streams: string[] }>
+  | Envelope<"status.get", Record<string, never>>
   | Envelope<"ping", Record<string, never>>;
 
 /** A pending tool-call approval (from an agent's PreToolUse gate). */
