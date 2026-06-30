@@ -18,8 +18,9 @@ import type { Llm } from "../voice/llm.js";
 import { SnapshotCaptureSource } from "../capture/snapshot.js";
 import type { CaptureSource } from "../capture/source.js";
 import { PROFILES } from "./profiles.js";
+import { parseMenu } from "./menu.js";
 import {
-  listAllSessions, capturePaneHistory, capturePaneVisible, newShellSession, sendLine,
+  listAllSessions, capturePaneHistory, capturePaneVisible, newShellSession, sendLine, sendKey,
   SESSION_PREFIX, ADOPT_PREFIX,
 } from "../tmux/tmux.js";
 
@@ -50,7 +51,7 @@ export interface AgentManagerOptions {
 
 export class AgentManager {
   #tracked = new Map<string, Tracked>(); // key: tmux session name
-  #pendingQuestions = new Map<string, { target: string; options: string[] }>();
+  #pendingQuestions = new Map<string, { target: string; numbers: number[] }>();
   #onQuestion: (q: AgentQuestion) => void = () => {};
   #timer: ReturnType<typeof setInterval> | undefined;
   #busy = false;
@@ -74,13 +75,13 @@ export class AgentManager {
     this.#onQuestion = fn;
   }
 
-  /** Answer a pending conversational question by sending the chosen option to the agent. */
+  /** Answer a pending conversational question by sending the chosen option's number key. */
   async answerQuestion(id: string, optionIndex: number): Promise<void> {
     const p = this.#pendingQuestions.get(id);
     if (!p) return;
     this.#pendingQuestions.delete(id);
     for (const t of this.#tracked.values()) if (t.questionId === id) t.questionId = undefined;
-    await sendLine(p.target, p.options[optionIndex] ?? String(optionIndex + 1));
+    await sendKey(p.target, String(p.numbers[optionIndex] ?? optionIndex + 1));
   }
 
   start(): void {
@@ -91,30 +92,29 @@ export class AgentManager {
 
   async #tick(): Promise<void> {
     await this.#discover();
-    if (this.#llm) await this.#checkQuestions();
+    await this.#checkQuestions();
   }
 
-  /** When a worker's screen goes STABLE, ask the LLM if it's waiting on a choice. */
+  /** Surface a LIVE interactive menu (deterministic — numbered options + nav footer on the
+   *  current screen). No LLM, so it can't hallucinate a menu from scrollback. */
   async #checkQuestions(): Promise<void> {
     for (const [session, t] of this.#tracked) {
       const vis = (await capturePaneVisible(session)) ?? "";
       if (vis !== t.lastVisible) {
         t.lastVisible = vis;
-        t.stable = 0;
         if (t.questionId) { this.#pendingQuestions.delete(t.questionId); t.questionId = undefined; }
-        continue;
       }
-      t.stable++;
-      // Analyze once, the moment it becomes stable (and not already asked).
-      if (t.stable === 2 && !t.questionId && vis.trim()) {
-        const q = await this.#llm!.detectQuestion(vis.split("\n")).catch(() => null);
-        if (q) {
-          const id = ulid();
-          t.questionId = id;
-          this.#pendingQuestions.set(id, { target: session, options: q.options });
-          this.#onQuestion({ id, project: t.projectName, question: q.question, options: q.options });
-          this.#log(`question on ${t.projectName}: ${q.question} [${q.options.join(" / ")}]`);
-        }
+      const menu = parseMenu(vis);
+      if (menu && !t.questionId) {
+        const id = ulid();
+        t.questionId = id;
+        this.#pendingQuestions.set(id, { target: session, numbers: menu.numbers });
+        this.#onQuestion({ id, project: t.projectName, question: menu.question, options: menu.options });
+        this.#log(`question on ${t.projectName}: ${menu.question} [${menu.options.join(" / ")}]`);
+      } else if (!menu && t.questionId) {
+        // The menu is gone (answered/dismissed) → clear so stale cards don't linger.
+        this.#pendingQuestions.delete(t.questionId);
+        t.questionId = undefined;
       }
     }
   }
