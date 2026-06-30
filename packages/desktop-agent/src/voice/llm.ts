@@ -109,24 +109,32 @@ export class OllamaLlm implements Llm {
   async detectQuestion(lines: string[]): Promise<DetectedQuestion | null> {
     const tail = lines.slice(-50).join("\n");
     const system =
-      "You read the recent terminal output of an AI coding agent and decide whether the " +
-      "agent is RIGHT NOW asking the user to choose between options / answer a question " +
-      "(and is waiting). Output ONLY JSON.\n" +
-      'If it is waiting on a choice: {"waiting": true, "question": "<the question, short>", "options": ["opt1","opt2",...]}\n' +
-      'If it is NOT waiting on a user choice (just working, or finished): {"waiting": false}\n' +
-      "This INCLUDES the agent asking permission to run a command or apply a change with a " +
-      "numbered/yes-no menu (e.g. codex 'Allow command? 1. Yes 2. No'). Only when it is " +
-      "actually stopped and waiting for the user to pick.";
-    const raw = await this.#chatJson(system, `Output:\n${tail}`);
+      "You read an AI coding agent's terminal screen and decide if it is presenting an " +
+      "EXPLICIT interactive selection menu it is BLOCKED on — a list of choices the user " +
+      "picks from. Output ONLY JSON.\n" +
+      'If yes: {"waiting": true, "question": "<the prompt, short>", "options": ["exact option 1","exact option 2",...]}\n' +
+      'Otherwise: {"waiting": false}\n' +
+      "STRICT rules:\n" +
+      "- ONLY a real menu counts: numbered/lettered options or a yes/no/allow prompt the " +
+      "agent rendered (e.g. a cursor like '> 1. Yes  2. No', 'Do you want to proceed? 1) … 2) …').\n" +
+      "- The options must be the agent's OWN listed choices, verbatim and short.\n" +
+      "- waiting=FALSE for: open/rhetorical questions with no listed options (e.g. 'What " +
+      "should we work on?'), normal prose, or when it's just idle at a prompt.\n" +
+      "- NEVER treat shell/terminal chrome as options: shell prompts, status lines, the " +
+      "model name, context %, token cost ($…), git branch, paths, timestamps. Those are NOT a menu.";
+    const raw = await this.#chatJson(system, `Screen:\n${tail}`);
     try {
       const o = JSON.parse(raw) as { waiting?: boolean; question?: string; options?: string[] };
-      if (o.waiting && o.question && Array.isArray(o.options) && o.options.length >= 2) {
-        return { question: o.question, options: o.options.slice(0, 6).map(String) };
-      }
+      if (!o.waiting || !o.question || !Array.isArray(o.options) || o.options.length < 2) return null;
+      const options = o.options.slice(0, 6).map(String).map((s) => s.trim()).filter(Boolean);
+      if (options.length < 2) return null;
+      // Safety net: reject if any "option" looks like terminal chrome (status line / prompt).
+      const chrome = /ctx:|\$\s*[\d.]|\bgit:\(|\d+%|context\)|tokens?\b|\bmain\b\s*[*✗]|➜|→|←/i;
+      if (options.some((s) => chrome.test(s))) return null;
+      return { question: o.question.trim(), options };
     } catch {
-      /* ignore */
+      return null;
     }
-    return null;
   }
 
   async explainApproval(tool: string, detail: string, risk: string, locale: string): Promise<ApprovalExplanation> {
