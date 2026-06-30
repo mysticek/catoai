@@ -16,7 +16,7 @@ import { RecoveryMonitor } from "./recovery/monitor.js";
 import { WsServer } from "./ws/server.js";
 import { createStt, ensureWhisperServer } from "./voice/stt.js";
 import { createLlm } from "./voice/llm.js";
-import { sendLine, sendKey, capturePaneVisible, capturePaneScreen, resizeWindow, autoSizeWindow } from "./tmux/tmux.js";
+import { sendLine, sendKey, capturePaneVisible, capturePaneScreen, resizeWindow, autoSizeWindow, killSession } from "./tmux/tmux.js";
 import { advertiseCato } from "./discovery/advertise.js";
 import { friendlyHost, asciiHost } from "./util/host.js";
 
@@ -49,6 +49,7 @@ async function main(): Promise<void> {
     screen: (target) => capturePaneScreen(target, 400).then((s) => s ?? ""),
     resize: (target, cols, rows) => resizeWindow(target, cols, rows),
     autoSize: (target) => autoSizeWindow(target),
+    kill: (target) => killSession(target),
   };
   const orchestrator = new Orchestrator(memory, control, {
     spawnWorker: (kind, project) => manager.spawnForProject(kind, project),

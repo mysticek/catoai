@@ -8,7 +8,7 @@
 
 import { homedir } from "node:os";
 import type { Pool } from "../db.js";
-import type { CatoEvent, EventType, ProjectStatus } from "@cato/shared";
+import type { CatoEvent, EventType, ProjectStatus, ProjectInfo } from "@cato/shared";
 import { clean, scoreLine, detect } from "./importance.js";
 import { toVectorLiteral, type Embedder } from "./embeddings.js";
 
@@ -432,6 +432,30 @@ export class MemoryEngine {
       state: "active" as const,
       summary: "",
       cwd: (r.root_path ?? "").replace(home, "~"),
+    }));
+  }
+
+  /** A project's absolute folder (for reopening it). */
+  async projectRoot(name: string): Promise<string | null> {
+    const { rows } = await this.pool.query<{ root_path: string }>(`SELECT root_path FROM project WHERE name = $1`, [name]);
+    return rows[0]?.root_path ?? null;
+  }
+
+  /** All chats — running and past — for the history list. */
+  async allProjects(): Promise<ProjectInfo[]> {
+    const { rows } = await this.pool.query<{ name: string; root_path: string; running: boolean; last_active: string | null }>(
+      `SELECT p.name, p.root_path,
+              EXISTS (SELECT 1 FROM worker w WHERE w.project_id = p.id AND w.state = 'running') AS running,
+              (SELECT max(created_at) FROM event e WHERE e.project_id = p.id) AS last_active
+       FROM project p
+       ORDER BY running DESC, last_active DESC NULLS LAST`,
+    );
+    const home = homedir();
+    return rows.map((r) => ({
+      name: r.name,
+      cwd: (r.root_path ?? "").replace(home, "~"),
+      running: r.running,
+      lastActive: r.last_active ? new Date(r.last_active).toISOString() : undefined,
     }));
   }
 }

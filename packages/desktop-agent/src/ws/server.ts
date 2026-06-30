@@ -377,6 +377,18 @@ export class WsServer {
         case "status.get":
           if (authenticated) void this.orchestrator.statuses().then((projects) => this.#emit(socket, frame("status.update", { projects }))).catch(() => {});
           return;
+        case "session.close":
+          if (authenticated) void this.orchestrator.closeSession(msg.payload.project)
+            .then(() => this.orchestrator.statuses())
+            .then((projects) => this.#emit(socket, frame("status.update", { projects })))
+            .catch(() => {});
+          return;
+        case "session.reopen":
+          if (authenticated) void this.orchestrator.reopenSession(msg.payload.project).catch(() => {});
+          return;
+        case "projects.list":
+          if (authenticated) void this.orchestrator.projectList().then((projects) => this.#emit(socket, frame("projects.all", { projects }))).catch(() => {});
+          return;
         default:
           if (!authenticated) { send(socket, frame("error", { code: "unauthorized", message: "say hello first" })); return; }
           void this.#route(socket, msg);

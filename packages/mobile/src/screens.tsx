@@ -3,10 +3,10 @@
  * Styling: StyleSheet only (no inline style objects); dynamic colors merged via helpers.
  */
 import { ReactNode, useState, useRef } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View, ActivityIndicator, TextInput, RefreshControl } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View, ActivityIndicator, TextInput, RefreshControl, Alert } from "react-native";
 import { C, R, S, tint, MONO, STATUS, StatusKey } from "./theme";
 import { Icon, Dot, StatusDot, Pill, RiskBadge, SectionLabel, Card, Btn, IconChip, L, KeyboardSafe } from "./ui";
-import type { ProjectStatus, ApprovalRequest, ActivityEvent } from "./catoClient";
+import type { ProjectStatus, ProjectInfo, ApprovalRequest, ActivityEvent } from "./catoClient";
 import { type Machine, platformLabel, machineLabel } from "./machines";
 import { parseAnsi, stripAnsi, extractSuggestion } from "./ansi";
 
@@ -379,7 +379,34 @@ export function ActivityScreen({ events }: { events: ActivityEvent[] }) {
 
 // ----- PROJECTS ---------------------------------------------------------------
 
-export function ProjectsScreen({ projects, onOpen, onStart }: { projects: ProjectStatus[]; onOpen: (n: string) => void; onStart: () => void }) {
+export function ProjectsScreen({
+  projects, onOpen, onReopen, onClose, onStart, displayName,
+}: {
+  projects: ProjectInfo[];
+  onOpen: (n: string) => void; onReopen: (n: string) => void; onClose: (n: string) => void; onStart: () => void;
+  displayName?: (name: string) => string;
+}) {
+  const live = projects.filter((p) => p.running);
+  const past = projects.filter((p) => !p.running);
+  const confirmClose = (n: string) => Alert.alert("Close chat?", `This ends the session for ${displayName?.(n) ?? n}.`, [
+    { text: "Cancel", style: "cancel" },
+    { text: "Close", style: "destructive", onPress: () => onClose(n) },
+  ]);
+  const row = (p: ProjectInfo) => (
+    <Pressable key={p.name} onPress={() => (p.running ? onOpen(p.name) : onReopen(p.name))} style={st.projRow}>
+      <View style={st.projHead}>
+        <Dot color={p.running ? C.active : C.idle} glow={p.running} />
+        <Text style={st.projName} numberOfLines={1}>{displayName?.(p.name) ?? p.name}</Text>
+        {p.running
+          ? <Pressable onPress={() => confirmClose(p.name)} hitSlop={8} style={st.projClose}><Icon name="x" size={16} color={C.textDim} /></Pressable>
+          : <Text style={st.projReopen}>Reopen</Text>}
+      </View>
+      <View style={st.projFolder}>
+        <Icon name="folder" size={12} color={C.textFaint} />
+        <Text style={st.projSummary} numberOfLines={1}>{p.cwd || "—"}</Text>
+      </View>
+    </Pressable>
+  );
   return (
     <View style={L.fill}>
       <ScreenTitle title="Projects" right={
@@ -387,19 +414,10 @@ export function ProjectsScreen({ projects, onOpen, onStart }: { projects: Projec
       } />
       <ScrollView style={L.fill} contentContainerStyle={st.projList} showsVerticalScrollIndicator={false}>
         {projects.length === 0 && <Text style={st.projEmpty}>No projects yet. Tap Start to launch an agent.</Text>}
-        {projects.map((p) => {
-          const color = STATUS[p.state as StatusKey];
-          return (
-            <Pressable key={p.name} onPress={() => onOpen(p.name)} style={st.projRow}>
-              <View style={st.projHead}>
-                <Dot color={color} glow={p.state === "active"} />
-                <Text style={st.projName}>{p.name}</Text>
-                <Pill color={color}>{p.state.toUpperCase()}</Pill>
-              </View>
-              <Text style={st.projSummary} numberOfLines={1}>{p.summary || "No active task"}</Text>
-            </Pressable>
-          );
-        })}
+        {live.length > 0 && <Text style={st.projSection}>RUNNING</Text>}
+        {live.map(row)}
+        {past.length > 0 && <Text style={st.projSection}>HISTORY</Text>}
+        {past.map(row)}
       </ScrollView>
     </View>
   );
@@ -520,10 +538,10 @@ export function ListeningOverlay({ transcript }: { transcript?: string }) {
 // ----- TERMINAL (live 1:1 mirror, two-way) -----------------------------------
 
 export function TerminalScreen({
-  project, title, text, onInput, onRename, onClose,
+  project, title, text, onInput, onRename, onClose, onCloseSession,
 }: {
   project: string; title?: string; text: string;
-  onInput: (text: string) => void; onRename?: (name: string) => void; onClose: () => void;
+  onInput: (text: string) => void; onRename?: (name: string) => void; onClose: () => void; onCloseSession?: () => void;
 }) {
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState(false);
@@ -551,6 +569,17 @@ export function TerminalScreen({
           )}
           <Dot color={C.active} glow />
           <Text style={st.termLive}>live</Text>
+          {onCloseSession && (
+            <Pressable
+              hitSlop={8}
+              onPress={() => Alert.alert("Close chat?", `This ends the session for ${title || project}.`, [
+                { text: "Cancel", style: "cancel" },
+                { text: "Close", style: "destructive", onPress: onCloseSession },
+              ])}
+            >
+              <Icon name="xCircle" size={20} color={C.attention} />
+            </Pressable>
+          )}
         </View>
         <ScrollView
           ref={scrollRef}
@@ -740,7 +769,11 @@ const st = StyleSheet.create({
   projRow: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 15, padding: 14 },
   projHead: { flexDirection: "row", alignItems: "center", gap: 9, marginBottom: 7 },
   projName: { color: C.text, fontSize: 15, fontWeight: "600", flex: 1 },
-  projSummary: { color: C.textDim, fontSize: 12.5 },
+  projSummary: { color: C.textDim, fontSize: 12.5, flex: 1 },
+  projSection: { color: C.textFaint, fontSize: 11, fontWeight: "700", letterSpacing: 0.5, marginTop: 6, marginBottom: 2, marginLeft: 2 },
+  projFolder: { flexDirection: "row", alignItems: "center", gap: 6 },
+  projClose: { padding: 2 },
+  projReopen: { color: C.accent, fontSize: 12.5, fontWeight: "600" },
 
   // pair
   pairWrap: { paddingHorizontal: 24, alignItems: "center", flexGrow: 1, paddingBottom: 40 },

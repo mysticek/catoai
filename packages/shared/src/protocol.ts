@@ -56,6 +56,10 @@ export type ClientMessage =
   | Envelope<"terminal.release", { project: string }>
   | Envelope<"subscribe", { streams: string[] }>
   | Envelope<"status.get", Record<string, never>>
+  // Close a running chat (kills its session) / list all chats incl. past ones (history).
+  | Envelope<"session.close", { project: string }>
+  | Envelope<"session.reopen", { project: string }>
+  | Envelope<"projects.list", Record<string, never>>
   | Envelope<"ping", Record<string, never>>;
 
 /** A pending tool-call approval (from an agent's PreToolUse gate). */
@@ -105,9 +109,18 @@ export type ServerMessage =
   | Envelope<"approval.update", { id: string; summary?: string; suggestions?: string[] }>
   | Envelope<"agent.question", { question: AgentQuestion }>
   | Envelope<"terminal.screen", { project: string; text: string }>
+  | Envelope<"projects.all", { projects: ProjectInfo[] }>
   | Envelope<"error", { code: string; message: string }>
   | Envelope<"enc", { enc: Enc }>
   | Envelope<"pong", Record<string, never>>;
+
+/** A chat (project) for the history list — running or past. */
+export interface ProjectInfo {
+  name: string;
+  cwd: string;
+  running: boolean;
+  lastActive?: string; // ISO
+}
 
 /** A conversational choice an agent is waiting on (not a tool gate). */
 export interface AgentQuestion {

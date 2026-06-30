@@ -4,7 +4,7 @@
  * Workers only execute; the Orchestrator owns the decision. See docs/ARCHITECTURE.md §2.2.
  */
 
-import type { CommandTarget, ProjectStatus } from "@cato/shared";
+import type { CommandTarget, ProjectStatus, ProjectInfo } from "@cato/shared";
 import type { MemoryEngine } from "../memory/memory-engine.js";
 import type { Llm, ClassifiedIntent } from "../voice/llm.js";
 import type { Intent } from "./intent.js";
@@ -22,6 +22,8 @@ export interface WorkerControl {
   resize(tmuxTarget: string, cols: number, rows: number): Promise<void>;
   /** Release the forced size (window follows its desktop client again). */
   autoSize(tmuxTarget: string): Promise<void>;
+  /** Kill the session (close the chat). */
+  kill(tmuxTarget: string): Promise<void>;
 }
 
 /** Optional capabilities the Orchestrator uses when available. */
@@ -108,6 +110,23 @@ export class Orchestrator {
   async terminalRelease(project: string): Promise<void> {
     const w = await this.memory.runningWorker(project);
     if (w?.tmuxTarget) await this.control.autoSize(w.tmuxTarget).catch(() => {});
+  }
+
+  /** Close a chat: kill its session (discovery then marks the worker stopped). */
+  async closeSession(project: string): Promise<void> {
+    const w = await this.memory.runningWorker(project);
+    if (w?.tmuxTarget) await this.control.kill(w.tmuxTarget).catch(() => {});
+  }
+
+  /** All chats (running + past) for the history list. */
+  async projectList(): Promise<ProjectInfo[]> {
+    return this.memory.allProjects();
+  }
+
+  /** Reopen a past chat: launch an agent in its folder again. */
+  async reopenSession(project: string): Promise<void> {
+    const root = await this.memory.projectRoot(project);
+    if (root) await this.deps.spawnWorker?.("claude-code", root);
   }
 
   /** Type a line into a project's worker terminal (mobile → terminal). */

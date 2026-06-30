@@ -17,6 +17,13 @@ export interface ProjectStatus {
   cwd?: string; // folder this chat runs in (home shortened to ~)
 }
 
+export interface ProjectInfo {
+  name: string;
+  cwd: string;
+  running: boolean;
+  lastActive?: string;
+}
+
 export interface ApprovalRequest {
   id: string;
   project?: string;
@@ -61,6 +68,7 @@ export interface CatoClientHandlers {
   onQuestion?: (question: AgentQuestion) => void;
   onActivity?: (event: ActivityEvent) => void;
   onTerminalScreen?: (project: string, text: string) => void;
+  onProjectsAll?: (projects: ProjectInfo[]) => void;
   onError?: (code: string, message: string) => void;
   onClose?: () => void;
 }
@@ -168,6 +176,18 @@ export class CatoClient {
   refreshStatus(): void {
     this.#send("status.get", {});
   }
+  /** Close a chat (kills its session). */
+  closeSession(project: string): void {
+    this.#send("session.close", { project });
+  }
+  /** Reopen a past chat (launch an agent in its folder). */
+  reopenSession(project: string): void {
+    this.#send("session.reopen", { project });
+  }
+  /** Ask for all chats (running + history). */
+  listProjects(): void {
+    this.#send("projects.list", {});
+  }
 
   /** Send a frame — encrypted (wrapped in `enc`) once an E2E session exists, else plain. */
   #send(type: string, payload: unknown): void {
@@ -232,6 +252,8 @@ export class CatoClient {
         return this.handlers.onActivity?.((p.event as ActivityEvent) ?? ({} as ActivityEvent));
       case "terminal.screen":
         return this.handlers.onTerminalScreen?.(String(p.project ?? ""), String(p.text ?? ""));
+      case "projects.all":
+        return this.handlers.onProjectsAll?.((p.projects as ProjectInfo[]) ?? []);
       case "error":
         return this.handlers.onError?.(String(p.code ?? "error"), String(p.message ?? ""));
     }

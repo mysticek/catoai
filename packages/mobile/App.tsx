@@ -11,7 +11,7 @@ import { StatusBar } from "expo-status-bar";
 import * as Speech from "expo-speech";
 import Constants from "expo-constants";
 import { useAudioRecorder, AudioModule, setAudioModeAsync } from "expo-audio";
-import { CatoClient, type ProjectStatus, type ApprovalRequest, type AgentQuestion, type ActivityEvent } from "./src/catoClient";
+import { CatoClient, type ProjectStatus, type ProjectInfo, type ApprovalRequest, type AgentQuestion, type ActivityEvent } from "./src/catoClient";
 import { readBase64, REC_OPTIONS } from "./src/audio";
 import { C, tint } from "./src/theme";
 import { Icon, Pill, L, BottomSheet } from "./src/ui";
@@ -52,6 +52,7 @@ export default function App() {
   const [terminalProject, setTerminalProject] = useState<string | null>(null); // open terminal mirror
   const [terminalText, setTerminalText] = useState("");
   const [terminalMenu, setTerminalMenu] = useState<{ question: string; options: string[]; numbers: number[] } | null>(null);
+  const [allProjects, setAllProjects] = useState<ProjectInfo[]>([]);
   const [prefs, setPrefs] = useState<Record<string, ProjectPrefs>>({}); // per-project listen/notify/speak
   const [aliases, setAliases] = useState<Record<string, string>>({}); // custom project names
   useEffect(() => { void loadAliases().then(setAliases); }, []);
@@ -111,6 +112,7 @@ export default function App() {
       onQuestion: () => { /* menus are handled live in the terminal view, not a global popup */ },
       onActivity: (e) => setActivity((prev) => [e, ...prev].slice(0, 60)),
       onTerminalScreen: (proj, text) => setTerminalText((cur) => (proj === terminalProjectRef.current ? text : cur)),
+      onProjectsAll: setAllProjects,
       onError: (code) => {
         setBusy(false); setConnectingTo(undefined);
         if (code === "not_set_up") setGateFor(address);
@@ -240,6 +242,17 @@ export default function App() {
     const { cols, rows } = termSize();
     client.current?.getTerminal(name, cols, rows);
   }, [termSize]);
+
+  // Load the chat history (running + past) when the Projects tab opens.
+  useEffect(() => { if (tab === "projects" && connected) client.current?.listProjects(); }, [tab, connected]);
+  const closeProject = useCallback((name: string) => {
+    client.current?.closeSession(name);
+    setTimeout(() => client.current?.listProjects(), 1200);
+  }, []);
+  const reopenProject = useCallback((name: string) => {
+    client.current?.reopenSession(name);
+    setTimeout(() => client.current?.listProjects(), 2800);
+  }, []);
 
   // Poll the open terminal's screen ~1s for a live mirror.
   useEffect(() => {
@@ -381,7 +394,7 @@ export default function App() {
       )}
       {tab === "approvals" && <ApprovalsScreen approvals={approvals} onResolve={(id, d) => resolveApproval(id, d)} onOpen={setDetail} />}
       {tab === "activity" && <ActivityScreen events={activity} />}
-      {tab === "projects" && <ProjectsScreen projects={projects} onOpen={openProject} onStart={() => setStartOpen(true)} />}
+      {tab === "projects" && <ProjectsScreen projects={allProjects} onOpen={openProject} onReopen={reopenProject} onClose={closeProject} onStart={() => setStartOpen(true)} displayName={displayName} />}
 
       <TabBar active={tab} onTab={setTab} approvals={pendingCount} />
 
@@ -391,6 +404,7 @@ export default function App() {
           onRename={(n) => renameProject(terminalProject, n)}
           onInput={(t) => client.current?.terminalInput(terminalProject, t)}
           onClose={() => { client.current?.terminalRelease(terminalProject); setTerminalProject(null); terminalProjectRef.current = null; setTerminalMenu(null); }}
+          onCloseSession={() => { closeProject(terminalProject); client.current?.terminalRelease(terminalProject); setTerminalProject(null); terminalProjectRef.current = null; setTerminalMenu(null); }}
         />
       )}
       {terminalProject && terminalMenu && (
