@@ -363,13 +363,16 @@ export class WsServer {
           if (authenticated) this.#onSpawn(msg.payload.agentKind, msg.payload.path, msg.payload.task);
           return;
         case "terminal.get":
-          if (authenticated) void this.orchestrator.terminalScreen(msg.payload.project).then((text) => this.#emit(socket, frame("terminal.screen", { project: msg.payload.project, text })));
+          if (authenticated) void this.orchestrator.terminalScreen(msg.payload.project, msg.payload.cols, msg.payload.rows).then((text) => this.#emit(socket, frame("terminal.screen", { project: msg.payload.project, text })));
           return;
         case "terminal.input":
           if (authenticated) void this.orchestrator.terminalInput(msg.payload.project, msg.payload.text);
           return;
         case "terminal.key":
           if (authenticated) void this.orchestrator.terminalKey(msg.payload.project, msg.payload.key);
+          return;
+        case "terminal.release":
+          if (authenticated) void this.orchestrator.terminalRelease(msg.payload.project);
           return;
         default:
           if (!authenticated) { send(socket, frame("error", { code: "unauthorized", message: "say hello first" })); return; }

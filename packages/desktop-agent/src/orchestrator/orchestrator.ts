@@ -18,6 +18,10 @@ export interface WorkerControl {
   key(tmuxTarget: string, key: string): Promise<void>;
   /** The rendered visible screen of the pane (1:1 with the terminal). */
   screen(tmuxTarget: string): Promise<string>;
+  /** Force the pane size so the TUI reflows to a phone's width. */
+  resize(tmuxTarget: string, cols: number, rows: number): Promise<void>;
+  /** Release the forced size (window follows its desktop client again). */
+  autoSize(tmuxTarget: string): Promise<void>;
 }
 
 /** Optional capabilities the Orchestrator uses when available. */
@@ -91,11 +95,19 @@ export class Orchestrator {
     return this.memory.projectStatuses();
   }
 
-  /** The live rendered terminal screen of a project's running worker (1:1 mirror). */
-  async terminalScreen(project: string): Promise<string> {
+  /** The live rendered terminal screen of a project's running worker (1:1 mirror). When the
+   *  viewer passes its size, reflow the pane to that width so it fits the phone. */
+  async terminalScreen(project: string, cols?: number, rows?: number): Promise<string> {
     const w = await this.memory.runningWorker(project);
     if (!w?.tmuxTarget) return "";
+    if (cols && rows) await this.control.resize(w.tmuxTarget, cols, rows).catch(() => {});
     return this.control.screen(w.tmuxTarget).catch(() => "");
+  }
+
+  /** Release the forced pane size when the phone stops viewing (desktop size restored). */
+  async terminalRelease(project: string): Promise<void> {
+    const w = await this.memory.runningWorker(project);
+    if (w?.tmuxTarget) await this.control.autoSize(w.tmuxTarget).catch(() => {});
   }
 
   /** Type a line into a project's worker terminal (mobile → terminal). */

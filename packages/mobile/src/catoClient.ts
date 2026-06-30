@@ -148,15 +148,19 @@ export class CatoClient {
     this.#send("worker.spawn", { agentKind, path, task: task || undefined });
   }
 
-  /** Live terminal mirror: request the current screen, type a line, or send a raw key. */
-  getTerminal(project: string): void {
-    this.#send("terminal.get", { project });
+  /** Live terminal mirror: request the current screen (reflowed to cols×rows), type a line,
+   *  send a raw key, or release the forced size when the viewer closes. */
+  getTerminal(project: string, cols?: number, rows?: number): void {
+    this.#send("terminal.get", { project, cols, rows });
   }
   terminalInput(project: string, text: string): void {
     this.#send("terminal.input", { project, text });
   }
   terminalKey(project: string, key: string): void {
     this.#send("terminal.key", { project, key });
+  }
+  terminalRelease(project: string): void {
+    this.#send("terminal.release", { project });
   }
 
   /** Send a frame — encrypted (wrapped in `enc`) once an E2E session exists, else plain. */

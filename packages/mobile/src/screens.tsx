@@ -434,7 +434,7 @@ export function PairScreen({
                 <Text style={st.machineName} numberOfLines={1}>{machineLabel(m)}</Text>
                 <View style={st.machineSub}>
                   {m.online === false ? (
-                    <><Dot color={C.idle} /><Text style={[st.foundText, st.offlineText]}>Offline</Text></>
+                    <><Dot color={C.idle} /><Text style={[st.foundText, st.offlineText]}>Offline — is Cato running?</Text></>
                   ) : m.secured === false ? (
                     <><Dot color={C.waiting} /><Text style={[st.foundText, st.setupText]}>Setup needed</Text></>
                   ) : m.online === true ? (
@@ -530,7 +530,8 @@ export function TerminalScreen({
           contentContainerStyle={st.termBodyContent}
           onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
         >
-          <Text style={st.termText} selectable>{text || "…"}</Text>
+          {/* The agent reflows the pane to this screen's width, so it fits without scrolling. */}
+          <Text style={st.termText} selectable>{cleanTerminalScreen(text) || "…"}</Text>
         </ScrollView>
         <View style={st.termBar}>
           <View style={st.termInputRow}>
@@ -546,6 +547,19 @@ export function TerminalScreen({
       </KeyboardSafe>
     </View>
   );
+}
+
+/** Tidy the mirrored screen for display: keep everything (the status bar and Claude's boxes
+ *  stay 1:1 — shown via horizontal scroll), just drop the empty bottom padding and collapse
+ *  runs of blank lines so there's no huge gap. */
+export function cleanTerminalScreen(text: string): string {
+  if (!text) return text;
+  const lines = text.split("\n").map((l) => l.replace(/\s+$/, ""));
+  const blank = (l: string) => /^\s*$/.test(l);
+  while (lines.length && blank(lines[lines.length - 1])) lines.pop(); // trailing empty pane rows
+  const out: string[] = [];
+  for (const l of lines) { if (blank(l) && out.length && blank(out[out.length - 1])) continue; out.push(l); }
+  return out.join("\n");
 }
 
 /** Detect a terminal selection menu (numbered options + a nav footer) so the app can
@@ -738,6 +752,7 @@ const st = StyleSheet.create({
   termLive: { color: C.active, fontSize: 12, fontWeight: "600" },
   termBody: { flex: 1, backgroundColor: C.black },
   termBodyContent: { padding: 12 },
+  termHScroll: { paddingRight: 24 },
   termText: { color: "#d6d7dd", fontFamily: MONO, fontSize: 11.5, lineHeight: 16 },
   termBar: { borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.bg },
   termInputRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 26 },

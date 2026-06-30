@@ -80,6 +80,20 @@ export async function killSession(name: string): Promise<void> {
   await exec("tmux", ["kill-session", "-t", name]).catch(() => {});
 }
 
+/** Force a window to a given size (so a phone viewer reflows the TUI to its width), even
+ *  when a desktop client is attached. Pair with autoSizeWindow() to release it. */
+export async function resizeWindow(target: string, cols: number, rows: number): Promise<void> {
+  const c = Math.max(20, Math.min(400, Math.floor(cols)));
+  const r = Math.max(10, Math.min(200, Math.floor(rows)));
+  await exec("tmux", ["set-window-option", "-t", target, "window-size", "manual"]).catch(() => {});
+  await exec("tmux", ["resize-window", "-t", target, "-x", String(c), "-y", String(r)]).catch(() => {});
+}
+
+/** Let the window follow its attached client(s) again (restores the desktop size). */
+export async function autoSizeWindow(target: string): Promise<void> {
+  await exec("tmux", ["set-window-option", "-t", target, "window-size", "latest"]).catch(() => {});
+}
+
 /** List Cato-owned sessions (those with our prefix). */
 export async function listSessions(): Promise<string[]> {
   return (await listAllSessions()).filter((s) => s.startsWith(SESSION_PREFIX));

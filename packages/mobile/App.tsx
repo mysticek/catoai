@@ -4,7 +4,8 @@
  * four tabs (Talk / Approvals / Activity / Projects). Implements Cato.dc.html.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Dimensions, Pressable, StyleSheet, Text, View } from "react-native";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import * as Speech from "expo-speech";
 import Constants from "expo-constants";
@@ -25,6 +26,14 @@ const extra = (Constants.expoConfig?.extra ?? {}) as { desktopWsUrl?: string; pa
 const TTS: Record<string, string> = { en: "en-US", sk: "sk-SK", cs: "cs-CZ" };
 
 export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppInner />
+    </SafeAreaProvider>
+  );
+}
+
+function AppInner() {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [active, setActive] = useState("");
   const [connectingTo, setConnectingTo] = useState<string | undefined>();
@@ -209,20 +218,31 @@ export default function App() {
     setQuestion(null);
   }, []);
 
-  // Tap a project → open the live 1:1 terminal mirror (two-way).
+  // Terminal viewport in character cells, so the agent reflows the pane to fit this phone.
+  const termSize = useCallback(() => {
+    const { width, height } = Dimensions.get("window");
+    return {
+      cols: Math.max(24, Math.floor((width - 24) / 6.9)), // mono char ≈ 0.6 × 11.5px font
+      rows: Math.max(20, Math.floor((height - 180) / 16)),
+    };
+  }, []);
+
+  // Tap a project → open the live terminal mirror (reflowed to this screen, two-way).
   const openProject = useCallback((name: string) => {
     setTerminalText("");
     setTerminalProject(name);
     terminalProjectRef.current = name;
-    client.current?.getTerminal(name);
-  }, []);
+    const { cols, rows } = termSize();
+    client.current?.getTerminal(name, cols, rows);
+  }, [termSize]);
 
   // Poll the open terminal's screen ~1s for a live mirror.
   useEffect(() => {
     if (!terminalProject || !connected) return;
-    const t = setInterval(() => client.current?.getTerminal(terminalProject), 1000);
+    const { cols, rows } = termSize();
+    const t = setInterval(() => client.current?.getTerminal(terminalProject, cols, rows), 1000);
     return () => clearInterval(t);
-  }, [terminalProject, connected]);
+  }, [terminalProject, connected, termSize]);
 
   // When the mirrored terminal shows a numbered menu, surface it as a tap sheet (no typing
   // numbers). Re-show only when the menu changes or reappears, not after the user dismisses.
@@ -353,7 +373,7 @@ export default function App() {
         <TerminalScreen
           project={terminalProject} text={terminalText}
           onInput={(t) => client.current?.terminalInput(terminalProject, t)}
-          onClose={() => { setTerminalProject(null); terminalProjectRef.current = null; setTerminalMenu(null); }}
+          onClose={() => { client.current?.terminalRelease(terminalProject); setTerminalProject(null); terminalProjectRef.current = null; setTerminalMenu(null); }}
         />
       )}
       {terminalProject && terminalMenu && (

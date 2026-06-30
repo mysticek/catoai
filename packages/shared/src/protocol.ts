@@ -48,10 +48,12 @@ export type ClientMessage =
     >
   | Envelope<"question.answer", { id: string; optionIndex: number }>
   | Envelope<"worker.spawn", { agentKind: string; path: string; task?: string }>
-  // Live 1:1 terminal mirror (two-way): get the rendered screen, type a line, or send a key.
-  | Envelope<"terminal.get", { project: string }>
+  // Live 1:1 terminal mirror (two-way): get the rendered screen (optionally reflowed to the
+  // viewer's cols×rows), type a line, send a key, or release the forced size on close.
+  | Envelope<"terminal.get", { project: string; cols?: number; rows?: number }>
   | Envelope<"terminal.input", { project: string; text: string }>
   | Envelope<"terminal.key", { project: string; key: string }>
+  | Envelope<"terminal.release", { project: string }>
   | Envelope<"subscribe", { streams: string[] }>
   | Envelope<"ping", Record<string, never>>;
 
