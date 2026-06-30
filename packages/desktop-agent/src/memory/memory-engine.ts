@@ -6,6 +6,7 @@
  * Embeddings are not produced yet (Phase 3) — the `embedding` columns stay NULL.
  */
 
+import { homedir } from "node:os";
 import type { Pool } from "../db.js";
 import type { CatoEvent, EventType, ProjectStatus } from "@cato/shared";
 import { clean, scoreLine, detect } from "./importance.js";
@@ -416,38 +417,21 @@ export class MemoryEngine {
    * notable event per project. Reconstructed from events (event sourcing).
    */
   async projectStatuses(): Promise<ProjectStatus[]> {
-    const { rows } = await this.pool.query<{
-      name: string;
-      type: EventType;
-      summary: string | null;
-      has_running: boolean;
-    }>(
-      `SELECT DISTINCT ON (p.id) p.name, e.type, e.summary,
-              EXISTS (
-                SELECT 1 FROM worker w
-                WHERE w.project_id = p.id AND w.state = 'running'
-              ) AS has_running
+    // Reflect reality: a project is shown when it has a LIVE worker. State is "active" — what
+    // actually needs the user (pending approvals / a live menu) is surfaced via live channels,
+    // not stale last-event guesses (which got stuck on old "tests failing" forever).
+    const { rows } = await this.pool.query<{ name: string; root_path: string }>(
+      `SELECT DISTINCT ON (p.id) p.name, p.root_path
        FROM project p
-       JOIN event e ON e.project_id = p.id
-       ORDER BY p.id, e.created_at DESC`,
+       WHERE EXISTS (SELECT 1 FROM worker w WHERE w.project_id = p.id AND w.state = 'running')
+       ORDER BY p.id, p.name`,
     );
-    return rows
-      .map((r) => ({
-        name: r.name,
-        state: deriveState(r.type, r.has_running),
-        summary: r.summary ?? r.type,
-        attention: r.type === "WorkerError" || r.type === "TestsFailed" || r.type === "ApprovalRequested",
-        hasRunning: r.has_running,
-      }))
-      // Only surface what's actually happening: a live worker, or something needing attention.
-      .filter((r) => r.hasRunning || r.attention)
-      .map(({ name, state, summary }) => ({ name, state, summary }));
+    const home = homedir();
+    return rows.map((r) => ({
+      name: r.name,
+      state: "active" as const,
+      summary: "",
+      cwd: (r.root_path ?? "").replace(home, "~"),
+    }));
   }
-}
-
-/** State reflects current worker liveness, not just the last event ever recorded. */
-function deriveState(type: EventType, hasRunning: boolean): ProjectStatus["state"] {
-  if (type === "ApprovalRequested") return "waiting";
-  if (type === "TestsFailed" || type === "WorkerError") return "attention";
-  return hasRunning ? "active" : "idle";
 }

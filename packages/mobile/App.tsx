@@ -108,7 +108,7 @@ export default function App() {
       onApproval: (a) => setApprovals((prev) => [a, ...prev.filter((x) => x.id !== a.id)]),
       onApprovalUpdate: (id, summary, suggestions) =>
         setApprovals((prev) => prev.map((a) => (a.id === id ? { ...a, summary: summary ?? a.summary, suggestions: suggestions ?? a.suggestions } : a))),
-      onQuestion: (q) => setQuestion(q),
+      onQuestion: () => { /* menus are handled live in the terminal view, not a global popup */ },
       onActivity: (e) => setActivity((prev) => [e, ...prev].slice(0, 60)),
       onTerminalScreen: (proj, text) => setTerminalText((cur) => (proj === terminalProjectRef.current ? text : cur)),
       onError: (code) => {
@@ -337,6 +337,8 @@ export default function App() {
   }, []);
 
   const pendingCount = approvals.length;
+  // Projects that genuinely need you right now = those with a pending approval (reliable lifecycle).
+  const needyProjects = useMemo(() => new Set(approvals.map((a) => a.project).filter(Boolean) as string[]), [approvals]);
   const hint = locale === "sk" ? "Podrž a hovor · alebo „Cato…“" : "Hold to talk · or “Cato…”";
 
   const tokenMachine = tokenFor ? allMachines.find((m) => m.address === tokenFor) ?? { address: tokenFor } : null;
@@ -373,7 +375,7 @@ export default function App() {
             onPressIn={onPressIn} onPressOut={onPressOut} onOpenProject={openProject}
             onGoApprovals={() => setTab("approvals")} approvals={pendingCount}
             prefs={prefs} onTogglePref={togglePref} displayName={displayName}
-            refreshing={homeRefreshing} onRefresh={refreshHome}
+            refreshing={homeRefreshing} onRefresh={refreshHome} needy={needyProjects}
           />
         </View>
       )}
@@ -400,7 +402,6 @@ export default function App() {
       )}
 
       <ApprovalDetailSheet approval={detail} onClose={() => setDetail(null)} onResolve={resolveApproval} />
-      <MultiChoiceSheet question={question} onClose={() => setQuestion(null)} onAnswer={answerQuestion} />
       {startOpen && <StartAgentSheet address={active} token={machines.find((m) => m.address === active)?.token} onClose={() => setStartOpen(false)} onSpawn={startAgent} />}
 
       <SettingsSheet

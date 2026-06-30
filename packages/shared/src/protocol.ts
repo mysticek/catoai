@@ -87,6 +87,8 @@ export interface ProjectStatus {
   /** Coarse state surfaced to the user. */
   state: "idle" | "active" | "waiting" | "attention";
   summary: string;
+  /** The folder this chat is running in (home shortened to ~), for the project card. */
+  cwd?: string;
 }
 
 export type ServerMessage =

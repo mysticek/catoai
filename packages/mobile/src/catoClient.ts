@@ -14,6 +14,7 @@ export interface ProjectStatus {
   name: string;
   state: ProjectState;
   summary: string;
+  cwd?: string; // folder this chat runs in (home shortened to ~)
 }
 
 export interface ApprovalRequest {

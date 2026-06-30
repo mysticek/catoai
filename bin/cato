@@ -72,10 +72,15 @@ fi
 if [ -n "${TMUX:-}" ]; then exec "$agent" "$@"; fi
 
 proj="cato-$(basename "$PWD" | tr -c 'A-Za-z0-9_-' '_')"
-# Flags (e.g. `cato claude --continue`) apply to a FRESH session. If one already exists,
-# tmux -A just re-attaches and ignores them — say so instead of silently dropping them.
-if [ "$#" -gt 0 ] && tmux has-session -t "$proj" 2>/dev/null; then
-  echo "cato: '$proj' is already running — re-attaching; flags ($*) are ignored." >&2
-  echo "      to start fresh with them:  tmux kill-session -t '$proj'  then re-run" >&2
+if tmux has-session -t "$proj" 2>/dev/null; then
+  # Flags (e.g. `cato claude --continue`) apply to a FRESH session; re-attaching ignores them.
+  [ "$#" -gt 0 ] && {
+    echo "cato: '$proj' is already running — re-attaching; flags ($*) are ignored." >&2
+    echo "      to start fresh with them:  tmux kill-session -t '$proj'  then re-run" >&2
+  }
+  exec tmux attach-session -t "$proj"
 fi
-exec tmux new-session -A -s "$proj" "$agent" "$@"
+# Fresh session: enable mouse so the wheel scrolls history (instead of typing it into the input).
+tmux new-session -d -s "$proj" "$agent" "$@"
+tmux set-option -t "$proj" mouse on 2>/dev/null || true
+exec tmux attach-session -t "$proj"

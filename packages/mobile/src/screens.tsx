@@ -96,7 +96,7 @@ export const DEFAULT_PREFS: ProjectPrefs = { listen: false, notify: true, speak:
 export type PrefKey = keyof ProjectPrefs;
 
 export function TalkScreen({
-  projects, exchange, recording, busy, hint, onPressIn, onPressOut, onOpenProject, onGoApprovals, prefs, onTogglePref, displayName, refreshing, onRefresh,
+  projects, exchange, recording, busy, hint, onPressIn, onPressOut, onOpenProject, onGoApprovals, prefs, onTogglePref, displayName, refreshing, onRefresh, needy,
 }: {
   projects: ProjectStatus[];
   exchange?: { user?: string; cato?: string };
@@ -106,10 +106,14 @@ export function TalkScreen({
   prefs: Record<string, ProjectPrefs>; onTogglePref: (project: string, key: PrefKey) => void;
   displayName?: (name: string) => string;
   refreshing?: boolean; onRefresh?: () => void;
+  needy?: Set<string>;
 }) {
-  const needs = projects.filter((p) => p.state === "waiting" || p.state === "attention");
-  const quiet = projects.filter((p) => p.state === "active" || p.state === "idle");
-  const ordered = [...needs, ...quiet]; // attention first, but every project gets its own row
+  // Effective state: a project that has a pending approval needs you NOW (overrides "active").
+  const eff = (p: ProjectStatus): ProjectStatus => (needy?.has(p.name) ? { ...p, state: "waiting" } : p);
+  const decorated = projects.map(eff);
+  const needs = decorated.filter((p) => p.state === "waiting" || p.state === "attention");
+  const quiet = decorated.filter((p) => p.state === "active" || p.state === "idle");
+  const ordered = [...needs, ...quiet]; // ones needing you first, but every project gets its own row
   return (
     <View style={L.fill}>
       <ScrollView
@@ -186,7 +190,10 @@ function ProjectCard({
         <Pill color={color}>{BADGE[key]}</Pill>
       </View>
       <View style={st.needsFoot}>
-        <Text style={st.needsSummary} numberOfLines={1}>{p.summary || "running quietly"}</Text>
+        <View style={st.cardFolder}>
+          <Icon name="folder" size={13} color={C.textFaint} />
+          <Text style={st.needsSummary} numberOfLines={1}>{p.cwd || p.summary || "—"}</Text>
+        </View>
         <View style={st.cardActions}>
           {/* per-project: listen to you · notify you · speak to you */}
           <ToggleChip name="mic" on={prefs.listen} onPress={() => onToggle("listen")} />
@@ -661,6 +668,7 @@ const st = StyleSheet.create({
   needsName: { color: C.text, fontSize: 15, fontWeight: "600", flex: 1 },
   needsFoot: { flexDirection: "row", alignItems: "center", gap: 9 },
   needsSummary: { color: C.textDim, fontSize: 12.5, flex: 1 },
+  cardFolder: { flexDirection: "row", alignItems: "center", gap: 6, flex: 1 },
   cardActions: { flexDirection: "row", gap: 6, flexShrink: 0 },
   toggleChip: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center" },
   toggleChipOn: { backgroundColor: tint(C.accent, 0.16) },
