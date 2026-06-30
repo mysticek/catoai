@@ -135,3 +135,15 @@ export async function capturePaneVisible(target: string): Promise<string | null>
     return null; // pane gone
   }
 }
+
+/** Like capturePaneVisible but includes up to `lines` of scrollback, so a phone viewer can
+ *  scroll back through recent history (not just the current screen). */
+export async function capturePaneScreen(target: string, lines: number): Promise<string | null> {
+  try {
+    const back = Math.max(0, Math.min(2000, Math.floor(lines)));
+    const { stdout } = await exec("tmux", ["capture-pane", "-p", "-t", target, "-S", `-${back}`]);
+    return stdout;
+  } catch {
+    return null; // pane gone
+  }
+}

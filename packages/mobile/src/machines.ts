@@ -81,6 +81,15 @@ export async function deleteToken(id: string): Promise<void> {
   try { await SecureStore.deleteItemAsync(tokenKey(id)); } catch { /* best-effort */ }
 }
 
+// Per-project custom names (the user can rename a chat). Keyed by the agent's project name.
+const ALIAS_FILE = FileSystem.documentDirectory + "cato-aliases.json";
+export async function loadAliases(): Promise<Record<string, string>> {
+  try { const o = JSON.parse(await FileSystem.readAsStringAsync(ALIAS_FILE)); return o && typeof o === "object" ? o : {}; } catch { return {}; }
+}
+export async function saveAliases(a: Record<string, string>): Promise<void> {
+  try { await FileSystem.writeAsStringAsync(ALIAS_FILE, JSON.stringify(a)); } catch { /* best-effort */ }
+}
+
 export async function loadMachines(): Promise<Machine[]> {
   try {
     const txt = await FileSystem.readAsStringAsync(FILE);

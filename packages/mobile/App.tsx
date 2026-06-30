@@ -20,7 +20,7 @@ import {
   parseTerminalMenu, DEFAULT_PREFS, type Tab, type ProjectPrefs, type PrefKey,
 } from "./src/screens";
 import { ApprovalDetailSheet, MultiChoiceSheet, StartAgentSheet, TokenSheet, SetupGateSheet } from "./src/sheets";
-import { loadMachines, saveMachines, upsert, applyIdentity, fetchMachineInfo, saveToken, type Machine } from "./src/machines";
+import { loadMachines, saveMachines, upsert, applyIdentity, fetchMachineInfo, saveToken, loadAliases, saveAliases, type Machine } from "./src/machines";
 import { useDiscovery } from "./src/discovery";
 
 const extra = (Constants.expoConfig?.extra ?? {}) as { desktopWsUrl?: string; pairingToken?: string };
@@ -53,6 +53,18 @@ export default function App() {
   const [terminalText, setTerminalText] = useState("");
   const [terminalMenu, setTerminalMenu] = useState<{ question: string; options: string[]; numbers: number[] } | null>(null);
   const [prefs, setPrefs] = useState<Record<string, ProjectPrefs>>({}); // per-project listen/notify/speak
+  const [aliases, setAliases] = useState<Record<string, string>>({}); // custom project names
+  useEffect(() => { void loadAliases().then(setAliases); }, []);
+  const displayName = useCallback((name: string) => aliases[name]?.trim() || name, [aliases]);
+  const renameProject = useCallback((name: string, alias: string) => {
+    setAliases((cur) => {
+      const next = { ...cur };
+      const v = alias.trim();
+      if (v && v !== name) next[name] = v; else delete next[name];
+      void saveAliases(next);
+      return next;
+    });
+  }, []);
 
   const togglePref = useCallback((project: string, key: PrefKey) => {
     setPrefs((cur) => {
@@ -215,7 +227,7 @@ export default function App() {
   const termSize = useCallback(() => {
     const { width, height } = Dimensions.get("window");
     return {
-      cols: Math.max(24, Math.floor((width - 24) / 6.9)), // mono char ≈ 0.6 × 11.5px font
+      cols: Math.max(24, Math.floor((width - 12) / 6.9)), // mono char ≈ 0.6 × 11.5px font
       rows: Math.max(20, Math.floor((height - 180) / 16)),
     };
   }, []);
@@ -352,7 +364,7 @@ export default function App() {
             projects={projects} exchange={exchange} recording={recording} busy={busy} hint={hint}
             onPressIn={onPressIn} onPressOut={onPressOut} onOpenProject={openProject}
             onGoApprovals={() => setTab("approvals")} approvals={pendingCount}
-            prefs={prefs} onTogglePref={togglePref}
+            prefs={prefs} onTogglePref={togglePref} displayName={displayName}
           />
         </View>
       )}
@@ -364,7 +376,8 @@ export default function App() {
 
       {terminalProject && (
         <TerminalScreen
-          project={terminalProject} text={terminalText}
+          project={terminalProject} title={displayName(terminalProject)} text={terminalText}
+          onRename={(n) => renameProject(terminalProject, n)}
           onInput={(t) => client.current?.terminalInput(terminalProject, t)}
           onClose={() => { client.current?.terminalRelease(terminalProject); setTerminalProject(null); terminalProjectRef.current = null; setTerminalMenu(null); }}
         />

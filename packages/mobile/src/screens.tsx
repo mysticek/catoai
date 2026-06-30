@@ -95,7 +95,7 @@ export const DEFAULT_PREFS: ProjectPrefs = { listen: false, notify: true, speak:
 export type PrefKey = keyof ProjectPrefs;
 
 export function TalkScreen({
-  projects, exchange, recording, busy, hint, onPressIn, onPressOut, onOpenProject, onGoApprovals, prefs, onTogglePref,
+  projects, exchange, recording, busy, hint, onPressIn, onPressOut, onOpenProject, onGoApprovals, prefs, onTogglePref, displayName,
 }: {
   projects: ProjectStatus[];
   exchange?: { user?: string; cato?: string };
@@ -103,6 +103,7 @@ export function TalkScreen({
   onPressIn: () => void; onPressOut: () => void;
   onOpenProject: (name: string) => void; onGoApprovals: () => void; approvals: number;
   prefs: Record<string, ProjectPrefs>; onTogglePref: (project: string, key: PrefKey) => void;
+  displayName?: (name: string) => string;
 }) {
   const needs = projects.filter((p) => p.state === "waiting" || p.state === "attention");
   const quiet = projects.filter((p) => p.state === "active" || p.state === "idle");
@@ -126,7 +127,7 @@ export function TalkScreen({
           )}
           {ordered.map((p) => (
             <ProjectCard
-              key={p.name} p={p}
+              key={p.name} p={p} label={displayName?.(p.name) ?? p.name}
               prefs={prefs[p.name] ?? DEFAULT_PREFS}
               onPress={() => onOpenProject(p.name)}
               onToggle={(k) => onTogglePref(p.name, k)}
@@ -162,9 +163,9 @@ export function TalkScreen({
 const BADGE: Record<StatusKey, string> = { waiting: "WAITING", attention: "ATTENTION", active: "ACTIVE", idle: "IDLE" };
 
 function ProjectCard({
-  p, prefs, onPress, onToggle,
+  p, label, prefs, onPress, onToggle,
 }: {
-  p: ProjectStatus; prefs: ProjectPrefs; onPress: () => void; onToggle: (k: PrefKey) => void;
+  p: ProjectStatus; label: string; prefs: ProjectPrefs; onPress: () => void; onToggle: (k: PrefKey) => void;
 }) {
   const key = p.state as StatusKey;
   const color = STATUS[key];
@@ -176,7 +177,7 @@ function ProjectCard({
     >
       <View style={st.needsHead}>
         <Dot color={color} glow={key === "active"} />
-        <Text style={st.needsName} numberOfLines={1}>{p.name}</Text>
+        <Text style={st.needsName} numberOfLines={1}>{label}</Text>
         <Pill color={color}>{BADGE[key]}</Pill>
       </View>
       <View style={st.needsFoot}>
@@ -507,20 +508,34 @@ export function ListeningOverlay({ transcript }: { transcript?: string }) {
 // ----- TERMINAL (live 1:1 mirror, two-way) -----------------------------------
 
 export function TerminalScreen({
-  project, text, onInput, onClose,
+  project, title, text, onInput, onRename, onClose,
 }: {
-  project: string; text: string;
-  onInput: (text: string) => void; onClose: () => void;
+  project: string; title?: string; text: string;
+  onInput: (text: string) => void; onRename?: (name: string) => void; onClose: () => void;
 }) {
   const [draft, setDraft] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
   const scrollRef = useRef<ScrollView>(null);
+  const atBottom = useRef(true); // only auto-follow when the user is already at the bottom
   const send = () => { if (draft) { onInput(draft); setDraft(""); } };
+  const saveName = () => { onRename?.(nameDraft); setEditing(false); };
   return (
     <View style={st.termRoot}>
       <KeyboardSafe>
         <View style={st.termHeader}>
           <Pressable onPress={onClose} hitSlop={10}><Icon name="arrowLeft" size={22} color={C.textDim} /></Pressable>
-          <Text style={st.termTitle} numberOfLines={1}>{project}</Text>
+          {editing ? (
+            <TextInput
+              value={nameDraft} onChangeText={setNameDraft} autoFocus selectTextOnFocus
+              style={st.termTitleEdit} onSubmitEditing={saveName} onBlur={saveName} returnKeyType="done"
+              placeholder={project} placeholderTextColor={C.textMute}
+            />
+          ) : (
+            <Pressable style={L.flex1} onPress={() => { if (onRename) { setNameDraft(title ?? project); setEditing(true); } }}>
+              <Text style={st.termTitle} numberOfLines={1}>{title || project}{onRename ? "  ✎" : ""}</Text>
+            </Pressable>
+          )}
           <Dot color={C.active} glow />
           <Text style={st.termLive}>live</Text>
         </View>
@@ -528,7 +543,12 @@ export function TerminalScreen({
           ref={scrollRef}
           style={st.termBody}
           contentContainerStyle={st.termBodyContent}
-          onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
+          scrollEventThrottle={100}
+          onScroll={(e) => {
+            const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+            atBottom.current = contentOffset.y + layoutMeasurement.height >= contentSize.height - 48;
+          }}
+          onContentSizeChange={() => { if (atBottom.current) scrollRef.current?.scrollToEnd({ animated: false }); }}
         >
           {/* The agent reflows the pane to this screen's width, so it fits without scrolling. */}
           <Text style={st.termText} selectable>{cleanTerminalScreen(text) || "…"}</Text>
@@ -749,10 +769,10 @@ const st = StyleSheet.create({
   termRoot: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: C.bg, zIndex: 60, paddingTop: 50 },
   termHeader: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 18, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.border },
   termTitle: { color: C.text, fontSize: 16, fontWeight: "600", flex: 1 },
+  termTitleEdit: { color: C.text, fontSize: 16, fontWeight: "600", flex: 1, borderBottomWidth: 1, borderBottomColor: C.accent, paddingVertical: 2 },
   termLive: { color: C.active, fontSize: 12, fontWeight: "600" },
   termBody: { flex: 1, backgroundColor: C.black },
-  termBodyContent: { padding: 12 },
-  termHScroll: { paddingRight: 24 },
+  termBodyContent: { paddingHorizontal: 6, paddingVertical: 8 },
   termText: { color: "#d6d7dd", fontFamily: MONO, fontSize: 11.5, lineHeight: 16 },
   termBar: { borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.bg },
   termInputRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 26 },

@@ -16,7 +16,7 @@ import { RecoveryMonitor } from "./recovery/monitor.js";
 import { WsServer } from "./ws/server.js";
 import { createStt, ensureWhisperServer } from "./voice/stt.js";
 import { createLlm } from "./voice/llm.js";
-import { sendLine, sendKey, capturePaneVisible, resizeWindow, autoSizeWindow } from "./tmux/tmux.js";
+import { sendLine, sendKey, capturePaneVisible, capturePaneScreen, resizeWindow, autoSizeWindow } from "./tmux/tmux.js";
 import { advertiseCato } from "./discovery/advertise.js";
 import { friendlyHost, asciiHost } from "./util/host.js";
 
@@ -46,7 +46,7 @@ async function main(): Promise<void> {
     send: (target, text) => sendLine(target, text),
     interrupt: (target) => sendKey(target, "C-c"),
     key: (target, key) => sendKey(target, key),
-    screen: (target) => capturePaneVisible(target).then((s) => s ?? ""),
+    screen: (target) => capturePaneScreen(target, 400).then((s) => s ?? ""),
     resize: (target, cols, rows) => resizeWindow(target, cols, rows),
     autoSize: (target) => autoSizeWindow(target),
   };
