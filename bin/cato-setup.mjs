@@ -32,7 +32,7 @@ const cfg = load();
 const rl = createInterface({ input: stdin, output: stdout });
 
 console.log("\n  \x1b[1mCato setup\x1b[0m\n");
-const defRoot = cfg.workspaceRoot || join(homedir(), "dev");
+const defRoot = cfg.workspaceRoot || homedir();
 let root = expand(((await rl.question(`  Where do your projects live?  [${defRoot}]  `)) || "").trim() || defRoot);
 
 if (!existsSync(root)) {

@@ -48,8 +48,9 @@ export function loadConfig(): Config {
     sttServerUrl: get("STT_SERVER_URL", "sttServerUrl", "http://127.0.0.1:8088"),
     sttModel: get("STT_MODEL", "sttModel", `${homedir()}/.cato/models/ggml-large-v3-turbo.bin`),
     ffmpegBin: get("FFMPEG_BIN", "ffmpegBin", "ffmpeg"),
-    // Where Cato looks for project folders when voice-spawning a worker.
-    workspaceRoot: get("WORKSPACE_ROOT", "workspaceRoot", `${homedir()}/dev`),
+    // Where Cato looks for project folders. Defaults to the home dir (you pick the actual
+    // project via the folder browser); set explicitly in `cato setup`.
+    workspaceRoot: get("WORKSPACE_ROOT", "workspaceRoot", homedir()),
     // gemma3:4b = non-reasoning multilingual instruct → clean Slovak summaries + JSON
     // intent classification (qwen3 is a reasoning model and leaks its thinking into prose).
     llmModel: get("LLM_MODEL", "llmModel", "gemma3:4b"),
