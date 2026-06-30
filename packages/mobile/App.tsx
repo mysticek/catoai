@@ -108,6 +108,15 @@ export default function App() {
     setReconnecting(false);
   }, []);
 
+  // Disconnect and return to the Pair screen (to switch machines).
+  const disconnect = useCallback(() => {
+    stopReconnect();
+    client.current?.close();
+    client.current = null;
+    setConnected(false);
+    setSettingsOpen(false);
+  }, [stopReconnect]);
+
   // Tap a machine → gate on setup, then token, then connect.
   const handleConnect = useCallback((address: string) => {
     const m = machines.find((x) => x.address === address);
@@ -286,16 +295,18 @@ export default function App() {
         open={settingsOpen} onClose={() => setSettingsOpen(false)}
         locale={locale} onLocale={setLocale} url={active} connected={connected}
         onControl={(a) => client.current?.sendControl(a, locale)}
+        onDisconnect={disconnect}
       />
     </SafeAreaView>
   );
 }
 
 function SettingsSheet({
-  open, onClose, locale, onLocale, url, connected, onControl,
+  open, onClose, locale, onLocale, url, connected, onControl, onDisconnect,
 }: {
   open: boolean; onClose: () => void; locale: string; onLocale: (l: string) => void;
   url: string; connected: boolean; onControl: (a: "continue" | "stop" | "repeat" | "summarize") => void;
+  onDisconnect: () => void;
 }) {
   if (!open) return null;
   const langs: [string, string][] = [["en", "English"], ["sk", "Slovenčina"], ["cs", "Čeština"]];
@@ -329,6 +340,10 @@ function SettingsSheet({
           </View>
           <Pill color={connected ? C.active : C.attention}>{connected ? "Linked" : "Offline"}</Pill>
         </View>
+        <Pressable onPress={onDisconnect} style={s.switchBtn}>
+          <Icon name="arrowLeft" size={16} color={C.accent} />
+          <Text style={s.switchText}>Switch machine</Text>
+        </Pressable>
 
         <View style={s.relayRow}>
           <View style={s.relayTitleRow}>
@@ -365,6 +380,8 @@ const s = StyleSheet.create({
   connBody: { flex: 1, minWidth: 0 },
   connTitle: { color: C.text, fontWeight: "600", fontSize: 14 },
   connUrl: { color: C.textDim, fontSize: 12 },
+  switchBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingVertical: 12, marginTop: 10, borderRadius: 12, borderWidth: 1, borderColor: tint(C.accent, 0.3) },
+  switchText: { color: C.accent, fontSize: 14, fontWeight: "600" },
   relayRow: { backgroundColor: C.card, borderWidth: 1, borderColor: tint(C.accent, 0.22), borderRadius: 14, padding: 13, marginTop: 10, gap: 3 },
   relayTitleRow: { flexDirection: "row", alignItems: "center", gap: 7 },
   proText: { color: C.onAccent, fontWeight: "700", fontSize: 9 },
