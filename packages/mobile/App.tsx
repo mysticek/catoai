@@ -123,12 +123,19 @@ export default function App() {
     setSettingsOpen(false);
   }, [stopReconnect]);
 
-  // Tap a machine → gate on setup, then token, then connect.
-  const handleConnect = useCallback((address: string) => {
-    const m = machines.find((x) => x.address === address);
-    if (m?.secured === false) { setGateFor(address); return; }
-    if (m && !m.token) { setTokenFor(address); return; }
-    connect(address, m?.token);
+  // Tap a machine → verify it's set up, then gate / token / connect.
+  const handleConnect = useCallback(async (address: string) => {
+    let m = machines.find((x) => x.address === address);
+    // Make sure we actually know whether it's been through `cato setup`.
+    if (!m || m.secured === undefined) {
+      const info = await fetchMachineInfo(address);
+      if (!info) { Alert.alert("Can't reach this machine", "Make sure Cato is running on it and you're on the same Wi-Fi."); return; }
+      setMachines((prev) => { const next = applyIdentity(prev, address, info); void saveMachines(next); return next; });
+      m = { ...(m ?? { address }), ...info, secured: info.secured, onboarded: info.onboarded, pub: info.pub } as Machine;
+    }
+    if (m.secured === false || m.onboarded === false) { setGateFor(address); return; } // run `cato setup`
+    if (!m.token) { setTokenFor(address); return; } // pair with `cato pair`
+    connect(address, m.token);
   }, [machines, connect]);
 
   const submitToken = useCallback((address: string, token: string) => {

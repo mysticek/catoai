@@ -270,7 +270,7 @@ export function TokenSheet({ machine, onClose, onSubmit }: { machine: Machine | 
         <Text style={st.askLabel}>PAIRING TOKEN</Text>
       </View>
       <Text style={st.question}>Connect to {machineLabel(machine)}</Text>
-      <Text style={st.tokenHint}>Enter the token shown by <Mono style={st.tokenMono}>cato setup</Mono> on that machine.</Text>
+      <Text style={st.tokenHint}>Scan the QR — or enter the token — from <Mono style={st.tokenMono}>cato pair</Mono> on that machine.</Text>
       <TextInput
         value={token} onChangeText={setToken} autoFocus autoCapitalize="characters" autoCorrect={false}
         placeholder="ABCD-EFGH" placeholderTextColor={C.textMute} style={[st.input, st.tokenInput]}
