@@ -15,7 +15,7 @@ import { C, tint } from "./src/theme";
 import { Icon, Pill, L, BottomSheet } from "./src/ui";
 import {
   TalkScreen, ApprovalsScreen, ActivityScreen, ProjectsScreen, PairScreen, TerminalScreen, TabBar, ListeningOverlay, AppBar,
-  DEFAULT_PREFS, type Tab, type ProjectPrefs, type PrefKey,
+  parseTerminalMenu, DEFAULT_PREFS, type Tab, type ProjectPrefs, type PrefKey,
 } from "./src/screens";
 import { ApprovalDetailSheet, MultiChoiceSheet, StartAgentSheet, TokenSheet, SetupGateSheet } from "./src/sheets";
 import { loadMachines, saveMachines, upsert, applyIdentity, fetchMachineInfo, saveToken, type Machine } from "./src/machines";
@@ -49,6 +49,7 @@ export default function App() {
   const [gateFor, setGateFor] = useState<string | null>(null); // address that needs `cato setup`
   const [terminalProject, setTerminalProject] = useState<string | null>(null); // open terminal mirror
   const [terminalText, setTerminalText] = useState("");
+  const [terminalMenu, setTerminalMenu] = useState<{ question: string; options: string[]; numbers: number[] } | null>(null);
   const [prefs, setPrefs] = useState<Record<string, ProjectPrefs>>({}); // per-project listen/notify/speak
 
   const togglePref = useCallback((project: string, key: PrefKey) => {
@@ -223,6 +224,17 @@ export default function App() {
     return () => clearInterval(t);
   }, [terminalProject, connected]);
 
+  // When the mirrored terminal shows a numbered menu, surface it as a tap sheet (no typing
+  // numbers). Re-show only when the menu changes or reappears, not after the user dismisses.
+  const shownMenuSig = useRef<string | null>(null);
+  useEffect(() => {
+    if (!terminalProject) { setTerminalMenu(null); shownMenuSig.current = null; return; }
+    const m = parseTerminalMenu(terminalText);
+    if (!m) { shownMenuSig.current = null; setTerminalMenu(null); return; }
+    const sig = m.question + "|" + m.options.join("|");
+    if (sig !== shownMenuSig.current) { shownMenuSig.current = sig; setTerminalMenu(m); }
+  }, [terminalText, terminalProject]);
+
   const startAgent = useCallback((path: string, agent: string, task: string) => {
     client.current?.spawnWorker(agent, path, task);
     setTab("projects");
@@ -324,7 +336,14 @@ export default function App() {
           project={terminalProject} text={terminalText}
           onInput={(t) => client.current?.terminalInput(terminalProject, t)}
           onKey={(k) => client.current?.terminalKey(terminalProject, k)}
-          onClose={() => { setTerminalProject(null); terminalProjectRef.current = null; }}
+          onClose={() => { setTerminalProject(null); terminalProjectRef.current = null; setTerminalMenu(null); }}
+        />
+      )}
+      {terminalProject && terminalMenu && (
+        <MultiChoiceSheet
+          question={{ id: "terminal", question: terminalMenu.question, options: terminalMenu.options }}
+          onClose={() => setTerminalMenu(null)}
+          onAnswer={(_id, i) => { client.current?.terminalKey(terminalProject, String(terminalMenu.numbers[i])); setTerminalMenu(null); }}
         />
       )}
 

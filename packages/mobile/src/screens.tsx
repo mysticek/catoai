@@ -509,8 +509,7 @@ export function TerminalScreen({
 }) {
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<ScrollView>(null);
-  const send = () => { onInput(draft); setDraft(""); };
-  const keys: [string, string][] = [["Enter", "Enter"], ["Esc", "Escape"], ["↑", "Up"], ["↓", "Down"], ["⌃C", "C-c"]];
+  const send = () => { if (draft) { onInput(draft); setDraft(""); } };
   return (
     <View style={st.termRoot}>
       <KeyboardSafe>
@@ -528,21 +527,66 @@ export function TerminalScreen({
         >
           <Text style={st.termText} selectable>{text || "…"}</Text>
         </ScrollView>
-        <View style={st.termKeys}>
-          {keys.map(([lbl, k]) => (
-            <Pressable key={k} onPress={() => onKey(k)} style={st.termKey}><Text style={st.termKeyText}>{lbl}</Text></Pressable>
-          ))}
-        </View>
-        <View style={st.termInputRow}>
-          <TextInput
-            value={draft} onChangeText={setDraft} placeholder="type into the terminal…" placeholderTextColor={C.textMute}
-            style={st.termInput} autoCapitalize="none" autoCorrect={false} onSubmitEditing={send} blurOnSubmit={false} returnKeyType="send"
-          />
-          <Pressable onPress={send} style={st.termSend}><Icon name="arrowRight" size={20} color={C.onAccent} /></Pressable>
+        <View style={st.termBar}>
+          <View style={st.termKeys}>
+            <TermKey label="Esc" onPress={() => onKey("Escape")} />
+            <TermKey icon="chevronUp" onPress={() => onKey("Up")} />
+            <TermKey icon="chevronDown" onPress={() => onKey("Down")} />
+            <TermKey label="^C" danger onPress={() => onKey("C-c")} />
+            <View style={L.flex1} />
+            <TermKey icon="returnKey" label="Enter" onPress={() => onKey("Enter")} />
+          </View>
+          <View style={st.termInputRow}>
+            <TextInput
+              value={draft} onChangeText={setDraft} placeholder="type into the terminal…" placeholderTextColor={C.textMute}
+              style={st.termInput} autoCapitalize="none" autoCorrect={false} onSubmitEditing={send} blurOnSubmit={false} returnKeyType="send"
+            />
+            <Pressable onPress={send} style={[st.termSend, !draft && st.termSendOff]}>
+              <Icon name="arrowRight" size={21} color={draft ? C.onAccent : C.textDim} />
+            </Pressable>
+          </View>
         </View>
       </KeyboardSafe>
     </View>
   );
+}
+
+function TermKey({ label, icon, danger, onPress }: { label?: string; icon?: "chevronUp" | "chevronDown" | "returnKey"; danger?: boolean; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} hitSlop={4} style={[st.termKey, danger && st.termKeyDanger]}>
+      {icon && <Icon name={icon} size={15} color={danger ? C.attention : C.textDim} />}
+      {label && <Text style={[st.termKeyText, danger && st.termKeyTextDanger]}>{label}</Text>}
+    </Pressable>
+  );
+}
+
+/** Detect a terminal selection menu (numbered options + a nav footer) so the app can
+ *  surface it as a tappable sheet instead of making the user type numbers. */
+export function parseTerminalMenu(screen: string): { question: string; options: string[]; numbers: number[] } | null {
+  if (!screen) return null;
+  const lines = screen.split("\n");
+  const hasFooter = lines.some((l) => /to (select|navigate|cancel)|↑\/↓|esc to/i.test(l));
+  if (!hasFooter) return null;
+  const optRe = /^\s*[›>❯]?\s*(\d+)[.)]\s+(.+?)\s*$/;
+  const opts: { n: number; label: string }[] = [];
+  for (const raw of lines) {
+    const m = raw.match(optRe);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      const label = m[2].replace(/\s+/g, " ").trim();
+      if (label && !opts.some((o) => o.n === n)) opts.push({ n, label });
+    }
+  }
+  if (opts.length < 2) return null;
+  const firstIdx = lines.findIndex((l) => optRe.test(l));
+  let question = "";
+  for (let i = firstIdx - 1; i >= 0 && i > firstIdx - 8; i--) {
+    const t = lines[i].trim();
+    if (!t || /^[─━—_│|╰╯╭╮▁▔=·.\s]+$/.test(t) || /^[›>❯*]/.test(t)) continue;
+    question = t.replace(/^[□◇▸•◦\s]+/, "").trim();
+    break;
+  }
+  return { question: question || "Choose an option", options: opts.map((o) => o.label), numbers: opts.map((o) => o.n) };
 }
 
 const st = StyleSheet.create({
@@ -707,12 +751,16 @@ const st = StyleSheet.create({
   termBody: { flex: 1, backgroundColor: C.black },
   termBodyContent: { padding: 12 },
   termText: { color: "#d6d7dd", fontFamily: MONO, fontSize: 11.5, lineHeight: 16 },
-  termKeys: { flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingTop: 10 },
-  termKey: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
-  termKeyText: { color: C.text, fontSize: 13, fontWeight: "600", fontFamily: MONO },
-  termInputRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, paddingBottom: 26 },
-  termInput: { flex: 1, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 12, paddingHorizontal: 14, height: 46, color: C.text, fontFamily: MONO, fontSize: 13 },
-  termSend: { width: 46, height: 46, borderRadius: 12, backgroundColor: C.accent, alignItems: "center", justifyContent: "center" },
+  termBar: { borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.bg, paddingTop: 10 },
+  termKeys: { flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 12 },
+  termKey: { flexDirection: "row", alignItems: "center", gap: 5, minWidth: 42, height: 38, paddingHorizontal: 12, borderRadius: 11, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, justifyContent: "center" },
+  termKeyDanger: { backgroundColor: tint(C.attention, 0.12), borderColor: tint(C.attention, 0.28) },
+  termKeyText: { color: C.textDim, fontSize: 12.5, fontWeight: "600", fontFamily: MONO },
+  termKeyTextDanger: { color: C.attention },
+  termInputRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 26 },
+  termInput: { flex: 1, backgroundColor: C.card2, borderWidth: 1, borderColor: C.border, borderRadius: 23, paddingHorizontal: 18, height: 46, color: C.text, fontFamily: MONO, fontSize: 13 },
+  termSend: { width: 46, height: 46, borderRadius: 23, backgroundColor: C.accent, alignItems: "center", justifyContent: "center" },
+  termSendOff: { backgroundColor: C.card },
 
   // tab bar
   tabBar: { height: 76, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.07)", backgroundColor: C.bg, flexDirection: "row", paddingTop: 11 },
