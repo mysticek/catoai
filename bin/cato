@@ -16,6 +16,8 @@ selfdir="$(cd "$(dirname "$self")" && pwd)"
 
 # `cato setup` → onboarding (workspace root + pairing token).
 if [ "${1:-}" = "setup" ]; then exec node "$selfdir/cato-setup.mjs"; fi
+# `cato pair` → show the QR/token to add another device.
+if [ "${1:-}" = "pair" ]; then exec node "$selfdir/cato-pair.mjs"; fi
 # `cato doctor` → diagnose the local setup.
 if [ "${1:-}" = "doctor" ]; then exec node "$selfdir/cato-doctor.mjs"; fi
 
