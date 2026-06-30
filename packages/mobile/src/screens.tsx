@@ -502,10 +502,10 @@ export function ListeningOverlay({ transcript }: { transcript?: string }) {
 // ----- TERMINAL (live 1:1 mirror, two-way) -----------------------------------
 
 export function TerminalScreen({
-  project, text, onInput, onKey, onClose,
+  project, text, onInput, onClose,
 }: {
   project: string; text: string;
-  onInput: (text: string) => void; onKey: (key: string) => void; onClose: () => void;
+  onInput: (text: string) => void; onClose: () => void;
 }) {
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<ScrollView>(null);
@@ -528,14 +528,6 @@ export function TerminalScreen({
           <Text style={st.termText} selectable>{text || "…"}</Text>
         </ScrollView>
         <View style={st.termBar}>
-          <View style={st.termKeys}>
-            <TermKey label="Esc" onPress={() => onKey("Escape")} />
-            <TermKey icon="chevronUp" onPress={() => onKey("Up")} />
-            <TermKey icon="chevronDown" onPress={() => onKey("Down")} />
-            <TermKey label="^C" danger onPress={() => onKey("C-c")} />
-            <View style={L.flex1} />
-            <TermKey icon="returnKey" label="Enter" onPress={() => onKey("Enter")} />
-          </View>
           <View style={st.termInputRow}>
             <TextInput
               value={draft} onChangeText={setDraft} placeholder="type into the terminal…" placeholderTextColor={C.textMute}
@@ -548,15 +540,6 @@ export function TerminalScreen({
         </View>
       </KeyboardSafe>
     </View>
-  );
-}
-
-function TermKey({ label, icon, danger, onPress }: { label?: string; icon?: "chevronUp" | "chevronDown" | "returnKey"; danger?: boolean; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} hitSlop={4} style={[st.termKey, danger && st.termKeyDanger]}>
-      {icon && <Icon name={icon} size={15} color={danger ? C.attention : C.textDim} />}
-      {label && <Text style={[st.termKeyText, danger && st.termKeyTextDanger]}>{label}</Text>}
-    </Pressable>
   );
 }
 
@@ -751,13 +734,8 @@ const st = StyleSheet.create({
   termBody: { flex: 1, backgroundColor: C.black },
   termBodyContent: { padding: 12 },
   termText: { color: "#d6d7dd", fontFamily: MONO, fontSize: 11.5, lineHeight: 16 },
-  termBar: { borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.bg, paddingTop: 10 },
-  termKeys: { flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 12 },
-  termKey: { flexDirection: "row", alignItems: "center", gap: 5, minWidth: 42, height: 38, paddingHorizontal: 12, borderRadius: 11, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, justifyContent: "center" },
-  termKeyDanger: { backgroundColor: tint(C.attention, 0.12), borderColor: tint(C.attention, 0.28) },
-  termKeyText: { color: C.textDim, fontSize: 12.5, fontWeight: "600", fontFamily: MONO },
-  termKeyTextDanger: { color: C.attention },
-  termInputRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 26 },
+  termBar: { borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.bg },
+  termInputRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 26 },
   termInput: { flex: 1, backgroundColor: C.card2, borderWidth: 1, borderColor: C.border, borderRadius: 23, paddingHorizontal: 18, height: 46, color: C.text, fontFamily: MONO, fontSize: 13 },
   termSend: { width: 46, height: 46, borderRadius: 23, backgroundColor: C.accent, alignItems: "center", justifyContent: "center" },
   termSendOff: { backgroundColor: C.card },

@@ -335,7 +335,6 @@ export default function App() {
         <TerminalScreen
           project={terminalProject} text={terminalText}
           onInput={(t) => client.current?.terminalInput(terminalProject, t)}
-          onKey={(k) => client.current?.terminalKey(terminalProject, k)}
           onClose={() => { setTerminalProject(null); terminalProjectRef.current = null; setTerminalMenu(null); }}
         />
       )}
