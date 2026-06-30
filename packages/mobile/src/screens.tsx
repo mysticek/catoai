@@ -8,7 +8,7 @@ import { C, R, S, tint, MONO, STATUS, StatusKey } from "./theme";
 import { Icon, Dot, StatusDot, Pill, RiskBadge, SectionLabel, Card, Btn, IconChip, L, KeyboardSafe } from "./ui";
 import type { ProjectStatus, ApprovalRequest, ActivityEvent } from "./catoClient";
 import { type Machine, platformLabel, machineLabel } from "./machines";
-import { parseAnsi, stripAnsi } from "./ansi";
+import { parseAnsi, stripAnsi, extractSuggestion } from "./ansi";
 
 export type Tab = "talk" | "approvals" | "activity" | "projects";
 
@@ -519,7 +519,8 @@ export function TerminalScreen({
   const [nameDraft, setNameDraft] = useState("");
   const scrollRef = useRef<ScrollView>(null);
   const atBottom = useRef(true); // only auto-follow when the user is already at the bottom
-  const send = () => { if (draft) { onInput(draft); setDraft(""); } };
+  const suggestion = draft ? "" : extractSuggestion(text); // dim ghost text in the agent's input
+  const send = () => { const t = draft || suggestion; if (t) { onInput(t); setDraft(""); } };
   const saveName = () => { onRename?.(nameDraft); setEditing(false); };
   return (
     <View style={st.termRoot}>
@@ -569,11 +570,12 @@ export function TerminalScreen({
         <View style={st.termBar}>
           <View style={st.termInputRow}>
             <TextInput
-              value={draft} onChangeText={setDraft} placeholder="type into the terminal…" placeholderTextColor={C.textMute}
+              value={draft} onChangeText={setDraft}
+              placeholder={suggestion ? `↵ ${suggestion}` : "type into the terminal…"} placeholderTextColor={suggestion ? C.accent : C.textMute}
               style={st.termInput} autoCapitalize="none" autoCorrect={false} onSubmitEditing={send} blurOnSubmit={false} returnKeyType="send"
             />
-            <Pressable onPress={send} style={[st.termSend, !draft && st.termSendOff]}>
-              <Icon name="arrowRight" size={21} color={draft ? C.onAccent : C.textDim} />
+            <Pressable onPress={send} style={[st.termSend, !(draft || suggestion) && st.termSendOff]}>
+              <Icon name="arrowRight" size={21} color={(draft || suggestion) ? C.onAccent : C.textDim} />
             </Pressable>
           </View>
         </View>

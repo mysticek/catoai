@@ -7,6 +7,7 @@ export interface AnsiRun {
   text: string;
   color: string;
   bold: boolean;
+  dim: boolean;
 }
 
 const SGR = /\x1b\[([0-9;]*)m/g; // colour codes
@@ -35,6 +36,21 @@ function xterm256(n: number): string {
 }
 const rgb = (r: number, g: number, b: number) => `#${[r, g, b].map((x) => Math.max(0, Math.min(255, x)).toString(16).padStart(2, "0")).join("")}`;
 
+/** Best-effort: the greyed (dim) ghost suggestion in the agent's input box, so the app can
+ *  offer to submit it. Looks at the bottom prompt line(s) for dim text after a `>`/`❯`. */
+export function extractSuggestion(screen: string): string {
+  if (!screen) return "";
+  const lines = screen.split("\n");
+  for (let i = lines.length - 1; i >= 0 && i > lines.length - 12; i--) {
+    const line = lines[i] ?? "";
+    if (!/[>❯]/.test(stripAnsi(line))) continue; // only the input prompt line
+    const dimText = parseAnsi(line).filter((r) => r.dim).map((r) => r.text).join("");
+    const cleaned = dimText.replace(/^[│|>❯\s]+/, "").replace(/[│|]\s*$/, "").trim();
+    if (cleaned.length >= 3 && /[A-Za-zÀ-ž]/.test(cleaned)) return cleaned;
+  }
+  return "";
+}
+
 /** Parse one screen of ANSI text into styled runs (newlines preserved inside run text). */
 export function parseAnsi(input: string): AnsiRun[] {
   // Drop non-colour control sequences first (cursor moves etc. shouldn't appear, but be safe).
@@ -47,7 +63,7 @@ export function parseAnsi(input: string): AnsiRun[] {
   let m: RegExpExecArray | null;
   SGR.lastIndex = 0;
   const colorNow = () => (dim ? DIM : fg ?? FG);
-  const push = (t: string) => { if (t) runs.push({ text: t, color: colorNow(), bold }); };
+  const push = (t: string) => { if (t) runs.push({ text: t, color: colorNow(), bold, dim }); };
   while ((m = SGR.exec(text))) {
     push(text.slice(i, m.index));
     apply((m[1] ?? "").split(";"));
