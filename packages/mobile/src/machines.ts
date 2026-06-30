@@ -56,16 +56,28 @@ export function applyIdentity(list: Machine[], address: string, info: MachineInf
 
 const FILE = FileSystem.documentDirectory + "cato-machines.json";
 
-// Pairing tokens are secrets → kept in the device Keychain/Keystore (expo-secure-store),
-// keyed by the stable machine id, NOT in the plaintext machines file.
+// Pairing tokens are secrets → kept in the device Keychain/Keystore (expo-secure-store)
+// keyed by the stable machine id. If secure storage isn't available (e.g. the native
+// module isn't built into this binary yet), we fall back to keeping the token in the file
+// so pairing still persists across restarts — and migrate to the Keychain once available.
 const tokenKey = (id: string) => `cato.token.${id.replace(/[^A-Za-z0-9._-]/g, "_")}`;
+let _secure: boolean | undefined;
+async function secureOk(): Promise<boolean> {
+  if (_secure === undefined) {
+    try { _secure = await SecureStore.isAvailableAsync(); } catch { _secure = false; }
+  }
+  return _secure;
+}
 export async function saveToken(id: string, token: string): Promise<void> {
-  try { await SecureStore.setItemAsync(tokenKey(id), token); } catch { /* best-effort */ }
+  if (!(await secureOk())) return; // kept in the file by saveMachines instead
+  try { await SecureStore.setItemAsync(tokenKey(id), token); } catch { _secure = false; }
 }
 export async function loadToken(id: string): Promise<string | undefined> {
+  if (!(await secureOk())) return undefined;
   try { return (await SecureStore.getItemAsync(tokenKey(id))) ?? undefined; } catch { return undefined; }
 }
 export async function deleteToken(id: string): Promise<void> {
+  if (!(await secureOk())) return;
   try { await SecureStore.deleteItemAsync(tokenKey(id)); } catch { /* best-effort */ }
 }
 
@@ -74,8 +86,8 @@ export async function loadMachines(): Promise<Machine[]> {
     const txt = await FileSystem.readAsStringAsync(FILE);
     const list = JSON.parse(txt) as Machine[];
     if (!Array.isArray(list)) return [];
-    // Re-attach tokens from secure storage (they're never in the file).
-    for (const m of list) if (m.id) m.token = await loadToken(m.id);
+    // Tokens come from the Keychain when available; otherwise they're already in the file.
+    if (await secureOk()) for (const m of list) if (m.id) m.token = (await loadToken(m.id)) ?? m.token;
     return list;
   } catch {
     return [];
@@ -84,8 +96,11 @@ export async function loadMachines(): Promise<Machine[]> {
 
 export async function saveMachines(list: Machine[]): Promise<void> {
   try {
-    const safe = list.map((m) => { const c: Machine = { ...m }; delete c.token; return c; });
-    await FileSystem.writeAsStringAsync(FILE, JSON.stringify(safe));
+    // Strip tokens from the file ONLY when the Keychain is holding them; otherwise keep
+    // them so pairing survives a restart.
+    const keep = !(await secureOk());
+    const out = keep ? list : list.map((m) => { const c: Machine = { ...m }; delete c.token; return c; });
+    await FileSystem.writeAsStringAsync(FILE, JSON.stringify(out));
   } catch {
     /* best-effort */
   }
