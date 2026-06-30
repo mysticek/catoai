@@ -80,6 +80,7 @@ export default function App() {
   const reconnect = useRef<{ address: string; token?: string; attempts: number } | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const terminalProjectRef = useRef<string | null>(null);
+  const termHadContent = useRef(false); // saw real output → an empty frame now means the session ended
   const recorder = useAudioRecorder(REC_OPTIONS);
 
   const connect = useCallback((address: string, token?: string) => {
@@ -111,7 +112,15 @@ export default function App() {
         setApprovals((prev) => prev.map((a) => (a.id === id ? { ...a, summary: summary ?? a.summary, suggestions: suggestions ?? a.suggestions } : a))),
       onQuestion: () => { /* menus are handled live in the terminal view, not a global popup */ },
       onActivity: (e) => setActivity((prev) => [e, ...prev].slice(0, 60)),
-      onTerminalScreen: (proj, text) => setTerminalText((cur) => (proj === terminalProjectRef.current ? text : cur)),
+      onTerminalScreen: (proj, text) => {
+        if (proj !== terminalProjectRef.current) return;
+        if (text.trim()) { termHadContent.current = true; setTerminalText(text); return; }
+        // Empty after we'd seen output ⇒ the session was closed on the PC → close here too.
+        if (termHadContent.current) {
+          terminalProjectRef.current = null;
+          setTerminalProject(null); setTerminalText(""); setTerminalMenu(null);
+        }
+      },
       onProjectsAll: setAllProjects,
       onError: (code) => {
         setBusy(false); setConnectingTo(undefined);
@@ -237,6 +246,7 @@ export default function App() {
   // Tap a project → open the live terminal mirror (reflowed to this screen, two-way).
   const openProject = useCallback((name: string) => {
     setTerminalText("");
+    termHadContent.current = false;
     setTerminalProject(name);
     terminalProjectRef.current = name;
     const { cols, rows } = termSize();
