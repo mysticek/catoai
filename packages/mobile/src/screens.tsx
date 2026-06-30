@@ -3,7 +3,7 @@
  * Styling: StyleSheet only (no inline style objects); dynamic colors merged via helpers.
  */
 import { ReactNode, useState, useRef } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View, ActivityIndicator, TextInput } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View, ActivityIndicator, TextInput, RefreshControl } from "react-native";
 import { C, R, S, tint, MONO, STATUS, StatusKey } from "./theme";
 import { Icon, Dot, StatusDot, Pill, RiskBadge, SectionLabel, Card, Btn, IconChip, L, KeyboardSafe } from "./ui";
 import type { ProjectStatus, ApprovalRequest, ActivityEvent } from "./catoClient";
@@ -398,19 +398,24 @@ const machineIconName = (m: Machine): Parameters<typeof Icon>[0]["name"] =>
   m.platform === "darwin" ? "apple" : m.platform === "win32" ? "windows" : m.platform === "linux" ? "terminal" : "desktop";
 
 export function PairScreen({
-  machines, onConnect, onAdd, onRelay, connectingTo,
+  machines, onConnect, onAdd, onRelay, connectingTo, refreshing, onRefresh,
 }: {
   machines: Machine[];
   onConnect: (address: string) => void;
   onAdd: (address: string) => void;
   onRelay: () => void;
   connectingTo?: string;
+  refreshing?: boolean;
+  onRefresh?: () => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [addr, setAddr] = useState("");
   return (
     <KeyboardSafe>
-    <ScrollView contentContainerStyle={st.pairWrap} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+    <ScrollView
+      contentContainerStyle={st.pairWrap} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled"
+      refreshControl={onRefresh ? <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={C.accent} colors={[C.accent]} /> : undefined}
+    >
       <View style={st.spacer40} />
       <View style={st.pairLogo}><Icon name="shield" size={34} color={C.onAccent} /></View>
       <Text style={st.pairTitle}>Connect to Cato</Text>

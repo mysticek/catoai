@@ -285,6 +285,24 @@ export default function App() {
     }
   }, [allMachines, connected]);
 
+  // Pull-to-refresh on the Pair screen → re-ping every machine's /info (online/secured/pub).
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshMachines = useCallback(async () => {
+    setRefreshing(true);
+    enriched.current.clear();
+    await Promise.all(allMachines.map((m) =>
+      fetchMachineInfo(m.address).then((info) => {
+        enriched.current.add(m.address);
+        setMachines((prev) => {
+          const next = info ? applyIdentity(prev, m.address, info) : upsert(prev, { address: m.address, online: false });
+          void saveMachines(next);
+          return next;
+        });
+      }).catch(() => { /* unreachable */ }),
+    ));
+    setRefreshing(false);
+  }, [allMachines]);
+
   const pendingCount = approvals.length;
   const hint = locale === "sk" ? "Podrž a hovor · alebo „Cato…“" : "Hold to talk · or “Cato…”";
 
@@ -302,7 +320,7 @@ export default function App() {
             <Pressable onPress={stopReconnect} hitSlop={8}><Text style={s.reconnectStop}>Stop</Text></Pressable>
           </View>
         )}
-        <PairScreen machines={allMachines} onConnect={(a) => { stopReconnect(); handleConnect(a); }} onAdd={addMachine} onRelay={onRelay} connectingTo={connectingTo} />
+        <PairScreen machines={allMachines} onConnect={(a) => { stopReconnect(); handleConnect(a); }} onAdd={addMachine} onRelay={onRelay} connectingTo={connectingTo} refreshing={refreshing} onRefresh={refreshMachines} />
         <TokenSheet machine={tokenMachine} onClose={() => setTokenFor(null)} onSubmit={(t) => tokenFor && submitToken(tokenFor, t)} />
         <SetupGateSheet machine={gateMachine} onClose={() => setGateFor(null)} onHaveToken={() => { setGateFor(null); setTokenFor(gateFor); }} />
       </SafeAreaView>
