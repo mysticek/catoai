@@ -23,17 +23,20 @@ Usage:
   cato                 launch your agent (claude, else codex) in this folder, watched by Cato
   cato claude|codex …  launch a specific agent (extra args are passed through)
   cato setup           onboard this machine: pick a workspace + get a pairing token & QR
+  cato start           start the always-on agent (or restart it if it crashed)
+  cato stop            stop the always-on agent
   cato pair            show the QR / token again to add another device
   cato rotate          generate a NEW token (disconnects all paired devices) + show QR
   cato doctor          diagnose the local setup (deps, models, onboarding, security)
   cato help            show this help
-
-Run the brain:  npm start   ·   always-on:  npm run daemon:on / daemon:off
 USAGE
     exit 0 ;;
 esac
 # `cato setup` → onboarding (workspace root + pairing token).
 if [ "${1:-}" = "setup" ]; then exec node "$selfdir/cato-setup.mjs"; fi
+# `cato start` / `cato stop` → control the always-on agent.
+if [ "${1:-}" = "start" ]; then exec bash "$selfdir/cato-daemon.sh" on; fi
+if [ "${1:-}" = "stop" ];  then exec bash "$selfdir/cato-daemon.sh" off; fi
 # `cato pair` → show the QR/token to add another device.
 if [ "${1:-}" = "pair" ]; then exec node "$selfdir/cato-pair.mjs"; fi
 # `cato rotate` → new token (disconnects old devices).

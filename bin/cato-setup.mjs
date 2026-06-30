@@ -7,7 +7,9 @@
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { showPairing, genToken } from "./lib-pairing.mjs";
@@ -38,5 +40,12 @@ writeFileSync(FILE, JSON.stringify({ ...cfg, workspaceRoot: root, pairingToken: 
 console.log(`\n  \x1b[32m✓\x1b[0m Saved ${FILE}`);
 console.log(`     Workspace: ${root}`);
 if (/Documents|Desktop|Downloads/.test(root)) console.log(`     Note: macOS may prompt for permission to that folder the first time.`);
+
+// Run Cato always-on (auto-start on login + restart on crash) so it's never "offline".
+try {
+  execFileSync("bash", [join(dirname(fileURLToPath(import.meta.url)), "cato-daemon.sh"), "on"], { stdio: "inherit" });
+} catch {
+  console.log("     (couldn't enable always-on automatically — run `cato start` to launch it.)");
+}
 
 showPairing(); // QR + token
