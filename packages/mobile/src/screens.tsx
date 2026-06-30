@@ -550,8 +550,12 @@ export function TerminalScreen({
           }}
           onContentSizeChange={() => { if (atBottom.current) scrollRef.current?.scrollToEnd({ animated: false }); }}
         >
-          {/* The agent reflows the pane to this screen's width, so it fits without scrolling. */}
-          <Text style={st.termText} selectable>{cleanTerminalScreen(text) || "…"}</Text>
+          {/* Normally the agent reflows the pane to this width (fits, nothing to scroll). When
+              a desktop terminal is also open we can't shrink it, so the content is wider —
+              swipe sideways to keep the status bar + boxes intact (no broken wrapping). */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.termHScroll}>
+            <Text style={st.termText} selectable>{cleanTerminalScreen(text) || "…"}</Text>
+          </ScrollView>
         </ScrollView>
         <View style={st.termBar}>
           <View style={st.termInputRow}>
@@ -772,7 +776,8 @@ const st = StyleSheet.create({
   termTitleEdit: { color: C.text, fontSize: 16, fontWeight: "600", flex: 1, borderBottomWidth: 1, borderBottomColor: C.accent, paddingVertical: 2 },
   termLive: { color: C.active, fontSize: 12, fontWeight: "600" },
   termBody: { flex: 1, backgroundColor: C.black },
-  termBodyContent: { paddingHorizontal: 6, paddingVertical: 8 },
+  termBodyContent: { paddingVertical: 8 },
+  termHScroll: { paddingHorizontal: 6, paddingRight: 16 },
   termText: { color: "#d6d7dd", fontFamily: MONO, fontSize: 11.5, lineHeight: 16 },
   termBar: { borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.bg },
   termInputRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 26 },
