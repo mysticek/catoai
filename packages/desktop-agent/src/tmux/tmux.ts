@@ -80,6 +80,16 @@ export async function killSession(name: string): Promise<void> {
   await exec("tmux", ["kill-session", "-t", name]).catch(() => {});
 }
 
+/** The current working directory of a session's active pane (its real project folder). */
+export async function paneCwd(target: string): Promise<string | null> {
+  try {
+    const { stdout } = await exec("tmux", ["display-message", "-p", "-t", target, "#{pane_current_path}"]);
+    return stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 /** How many tmux clients are attached to a session (a desktop terminal is a client). */
 async function clientCount(target: string): Promise<number> {
   try {

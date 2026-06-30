@@ -20,7 +20,7 @@ import type { CaptureSource } from "../capture/source.js";
 import { PROFILES } from "./profiles.js";
 import { parseMenu } from "./menu.js";
 import {
-  listAllSessions, capturePaneHistory, capturePaneVisible, newShellSession, sendLine, sendKey,
+  listAllSessions, capturePaneHistory, capturePaneVisible, newShellSession, sendLine, sendKey, paneCwd,
   SESSION_PREFIX, ADOPT_PREFIX,
 } from "../tmux/tmux.js";
 
@@ -152,7 +152,8 @@ export class AgentManager {
 
   async #adopt(session: string): Promise<void> {
     const projectName = (session.startsWith(ADOPT_PREFIX) ? session.slice(ADOPT_PREFIX.length) : session).slice(0, 40) || session;
-    const projectId = await this.memory.ensureProject(projectName, process.cwd());
+    const cwd = (await paneCwd(session)) || process.cwd(); // the session's real folder, not the agent's
+    const projectId = await this.memory.ensureProject(projectName, cwd);
     const taskId = await this.memory.createTask(projectId, "adoptovaná session");
     const workerId = await this.memory.startWorker({
       projectId, projectName, agentKind: "adopted", sessionId: session,
