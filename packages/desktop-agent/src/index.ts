@@ -16,7 +16,7 @@ import { RecoveryMonitor } from "./recovery/monitor.js";
 import { WsServer } from "./ws/server.js";
 import { createStt, ensureWhisperServer } from "./voice/stt.js";
 import { createLlm } from "./voice/llm.js";
-import { sendLine, sendKey } from "./tmux/tmux.js";
+import { sendLine, sendKey, capturePaneVisible } from "./tmux/tmux.js";
 import { advertiseCato } from "./discovery/advertise.js";
 import { friendlyHost, asciiHost } from "./util/host.js";
 
@@ -40,10 +40,13 @@ async function main(): Promise<void> {
     onLog: (m) => console.log(`[agents] ${m}`),
   });
 
-  // Worker control is tmux in practice: text via send-keys, "stop" via Ctrl-C.
+  // Worker control is tmux in practice: text via send-keys, "stop" via Ctrl-C,
+  // raw keys + a rendered screen snapshot for the live terminal mirror.
   const control: WorkerControl = {
     send: (target, text) => sendLine(target, text),
     interrupt: (target) => sendKey(target, "C-c"),
+    key: (target, key) => sendKey(target, key),
+    screen: (target) => capturePaneVisible(target).then((s) => s ?? ""),
   };
   const orchestrator = new Orchestrator(memory, control, {
     spawnWorker: (kind, project) => manager.spawnForProject(kind, project),

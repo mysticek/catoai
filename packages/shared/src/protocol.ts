@@ -48,6 +48,10 @@ export type ClientMessage =
     >
   | Envelope<"question.answer", { id: string; optionIndex: number }>
   | Envelope<"worker.spawn", { agentKind: string; path: string; task?: string }>
+  // Live 1:1 terminal mirror (two-way): get the rendered screen, type a line, or send a key.
+  | Envelope<"terminal.get", { project: string }>
+  | Envelope<"terminal.input", { project: string; text: string }>
+  | Envelope<"terminal.key", { project: string; key: string }>
   | Envelope<"subscribe", { streams: string[] }>
   | Envelope<"ping", Record<string, never>>;
 
@@ -95,6 +99,7 @@ export type ServerMessage =
   | Envelope<"approval.request", { approval: ApprovalRequest }>
   | Envelope<"approval.update", { id: string; summary?: string; suggestions?: string[] }>
   | Envelope<"agent.question", { question: AgentQuestion }>
+  | Envelope<"terminal.screen", { project: string; text: string }>
   | Envelope<"error", { code: string; message: string }>
   | Envelope<"enc", { enc: Enc }>
   | Envelope<"pong", Record<string, never>>;

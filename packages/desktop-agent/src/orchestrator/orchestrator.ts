@@ -14,6 +14,10 @@ import * as say from "./phrasing.js";
 export interface WorkerControl {
   send(tmuxTarget: string, text: string): Promise<void>;
   interrupt(tmuxTarget: string): Promise<void>;
+  /** Send a raw key (tmux key name: Enter, Up, Down, Escape, C-c, …). */
+  key(tmuxTarget: string, key: string): Promise<void>;
+  /** The rendered visible screen of the pane (1:1 with the terminal). */
+  screen(tmuxTarget: string): Promise<string>;
 }
 
 /** Optional capabilities the Orchestrator uses when available. */
@@ -85,6 +89,25 @@ export class Orchestrator {
   /** Current per-project statuses (for the welcome/initial sync). */
   async statuses(): Promise<ProjectStatus[]> {
     return this.memory.projectStatuses();
+  }
+
+  /** The live rendered terminal screen of a project's running worker (1:1 mirror). */
+  async terminalScreen(project: string): Promise<string> {
+    const w = await this.memory.runningWorker(project);
+    if (!w?.tmuxTarget) return "";
+    return this.control.screen(w.tmuxTarget).catch(() => "");
+  }
+
+  /** Type a line into a project's worker terminal (mobile → terminal). */
+  async terminalInput(project: string, text: string): Promise<void> {
+    const w = await this.memory.runningWorker(project);
+    if (w?.tmuxTarget) await this.control.send(w.tmuxTarget, text);
+  }
+
+  /** Send a raw key (Enter/Up/Down/Escape/C-c) into a project's worker terminal. */
+  async terminalKey(project: string, key: string): Promise<void> {
+    const w = await this.memory.runningWorker(project);
+    if (w?.tmuxTarget) await this.control.key(w.tmuxTarget, key);
   }
 
   /** Handle an explicit control button (continue/stop/repeat/summarize). */

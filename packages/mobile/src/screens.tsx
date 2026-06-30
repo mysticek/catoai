@@ -2,7 +2,7 @@
  * Cato screens — the four tabs + pair, presentational. State + wiring live in App.tsx.
  * Styling: StyleSheet only (no inline style objects); dynamic colors merged via helpers.
  */
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, useRef } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View, ActivityIndicator, TextInput } from "react-native";
 import { C, R, S, tint, MONO, STATUS, StatusKey } from "./theme";
 import { Icon, Dot, StatusDot, Pill, RiskBadge, SectionLabel, Card, Btn, IconChip, L, KeyboardSafe } from "./ui";
@@ -476,6 +476,52 @@ export function ListeningOverlay({ transcript }: { transcript?: string }) {
   );
 }
 
+// ----- TERMINAL (live 1:1 mirror, two-way) -----------------------------------
+
+export function TerminalScreen({
+  project, text, onInput, onKey, onClose,
+}: {
+  project: string; text: string;
+  onInput: (text: string) => void; onKey: (key: string) => void; onClose: () => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const scrollRef = useRef<ScrollView>(null);
+  const send = () => { onInput(draft); setDraft(""); };
+  const keys: [string, string][] = [["Enter", "Enter"], ["Esc", "Escape"], ["↑", "Up"], ["↓", "Down"], ["⌃C", "C-c"]];
+  return (
+    <View style={st.termRoot}>
+      <KeyboardSafe>
+        <View style={st.termHeader}>
+          <Pressable onPress={onClose} hitSlop={10}><Icon name="arrowLeft" size={22} color={C.textDim} /></Pressable>
+          <Text style={st.termTitle} numberOfLines={1}>{project}</Text>
+          <Dot color={C.active} glow />
+          <Text style={st.termLive}>live</Text>
+        </View>
+        <ScrollView
+          ref={scrollRef}
+          style={st.termBody}
+          contentContainerStyle={st.termBodyContent}
+          onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
+        >
+          <Text style={st.termText} selectable>{text || "…"}</Text>
+        </ScrollView>
+        <View style={st.termKeys}>
+          {keys.map(([lbl, k]) => (
+            <Pressable key={k} onPress={() => onKey(k)} style={st.termKey}><Text style={st.termKeyText}>{lbl}</Text></Pressable>
+          ))}
+        </View>
+        <View style={st.termInputRow}>
+          <TextInput
+            value={draft} onChangeText={setDraft} placeholder="type into the terminal…" placeholderTextColor={C.textMute}
+            style={st.termInput} autoCapitalize="none" autoCorrect={false} onSubmitEditing={send} blurOnSubmit={false} returnKeyType="send"
+          />
+          <Pressable onPress={send} style={st.termSend}><Icon name="arrowRight" size={20} color={C.onAccent} /></Pressable>
+        </View>
+      </KeyboardSafe>
+    </View>
+  );
+}
+
 const st = StyleSheet.create({
   // chrome
   appBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: S.xl, paddingTop: 6, paddingBottom: 14 },
@@ -625,6 +671,21 @@ const st = StyleSheet.create({
   waveBar: { width: 4, borderRadius: 3, backgroundColor: C.accent },
   listenDock: { alignItems: "center", paddingBottom: 40 },
   listenHint: { marginTop: 10 },
+
+  // terminal mirror
+  termRoot: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: C.bg, zIndex: 60, paddingTop: 50 },
+  termHeader: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 18, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.border },
+  termTitle: { color: C.text, fontSize: 16, fontWeight: "600", flex: 1 },
+  termLive: { color: C.active, fontSize: 12, fontWeight: "600" },
+  termBody: { flex: 1, backgroundColor: C.black },
+  termBodyContent: { padding: 12 },
+  termText: { color: "#d6d7dd", fontFamily: MONO, fontSize: 11.5, lineHeight: 16 },
+  termKeys: { flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingTop: 10 },
+  termKey: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 9, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
+  termKeyText: { color: C.text, fontSize: 13, fontWeight: "600", fontFamily: MONO },
+  termInputRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, paddingBottom: 26 },
+  termInput: { flex: 1, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 12, paddingHorizontal: 14, height: 46, color: C.text, fontFamily: MONO, fontSize: 13 },
+  termSend: { width: 46, height: 46, borderRadius: 12, backgroundColor: C.accent, alignItems: "center", justifyContent: "center" },
 
   // tab bar
   tabBar: { height: 76, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.07)", backgroundColor: C.bg, flexDirection: "row", paddingTop: 11 },

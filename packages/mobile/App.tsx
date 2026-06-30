@@ -14,7 +14,7 @@ import { readBase64, REC_OPTIONS } from "./src/audio";
 import { C, tint } from "./src/theme";
 import { Icon, Pill, L, BottomSheet } from "./src/ui";
 import {
-  TalkScreen, ApprovalsScreen, ActivityScreen, ProjectsScreen, PairScreen, TabBar, ListeningOverlay, AppBar, type Tab,
+  TalkScreen, ApprovalsScreen, ActivityScreen, ProjectsScreen, PairScreen, TerminalScreen, TabBar, ListeningOverlay, AppBar, type Tab,
 } from "./src/screens";
 import { ApprovalDetailSheet, MultiChoiceSheet, StartAgentSheet, TokenSheet, SetupGateSheet } from "./src/sheets";
 import { loadMachines, saveMachines, upsert, applyIdentity, fetchMachineInfo, saveToken, type Machine } from "./src/machines";
@@ -46,12 +46,15 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tokenFor, setTokenFor] = useState<string | null>(null); // address awaiting a token
   const [gateFor, setGateFor] = useState<string | null>(null); // address that needs `cato setup`
+  const [terminalProject, setTerminalProject] = useState<string | null>(null); // open terminal mirror
+  const [terminalText, setTerminalText] = useState("");
 
   const [reconnecting, setReconnecting] = useState(false);
   const client = useRef<CatoClient | null>(null);
   const enriched = useRef<Set<string>>(new Set());
   const reconnect = useRef<{ address: string; token?: string; attempts: number } | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const terminalProjectRef = useRef<string | null>(null);
   const recorder = useAudioRecorder(REC_OPTIONS);
 
   const connect = useCallback((address: string, token?: string) => {
@@ -83,6 +86,7 @@ export default function App() {
         setApprovals((prev) => prev.map((a) => (a.id === id ? { ...a, summary: summary ?? a.summary, suggestions: suggestions ?? a.suggestions } : a))),
       onQuestion: (q) => setQuestion(q),
       onActivity: (e) => setActivity((prev) => [e, ...prev].slice(0, 60)),
+      onTerminalScreen: (proj, text) => setTerminalText((cur) => (proj === terminalProjectRef.current ? text : cur)),
       onError: (code) => {
         setBusy(false); setConnectingTo(undefined);
         if (code === "not_set_up") setGateFor(address);
@@ -188,11 +192,20 @@ export default function App() {
     setQuestion(null);
   }, []);
 
+  // Tap a project → open the live 1:1 terminal mirror (two-way).
   const openProject = useCallback((name: string) => {
-    client.current?.sendVoice({ text: `how is ${name} doing`, locale });
-    setBusy(true);
-    setTab("talk");
-  }, [locale]);
+    setTerminalText("");
+    setTerminalProject(name);
+    terminalProjectRef.current = name;
+    client.current?.getTerminal(name);
+  }, []);
+
+  // Poll the open terminal's screen ~1s for a live mirror.
+  useEffect(() => {
+    if (!terminalProject || !connected) return;
+    const t = setInterval(() => client.current?.getTerminal(terminalProject), 1000);
+    return () => clearInterval(t);
+  }, [terminalProject, connected]);
 
   const startAgent = useCallback((path: string, agent: string, task: string) => {
     client.current?.spawnWorker(agent, path, task);
@@ -288,6 +301,15 @@ export default function App() {
       {tab === "projects" && <ProjectsScreen projects={projects} onOpen={openProject} onStart={() => setStartOpen(true)} />}
 
       <TabBar active={tab} onTab={setTab} approvals={pendingCount} />
+
+      {terminalProject && (
+        <TerminalScreen
+          project={terminalProject} text={terminalText}
+          onInput={(t) => client.current?.terminalInput(terminalProject, t)}
+          onKey={(k) => client.current?.terminalKey(terminalProject, k)}
+          onClose={() => { setTerminalProject(null); terminalProjectRef.current = null; }}
+        />
+      )}
 
       <ApprovalDetailSheet approval={detail} onClose={() => setDetail(null)} onResolve={resolveApproval} />
       <MultiChoiceSheet question={question} onClose={() => setQuestion(null)} onAnswer={answerQuestion} />

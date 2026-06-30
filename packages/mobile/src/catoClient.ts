@@ -59,6 +59,7 @@ export interface CatoClientHandlers {
   onApprovalUpdate?: (id: string, summary?: string, suggestions?: string[]) => void;
   onQuestion?: (question: AgentQuestion) => void;
   onActivity?: (event: ActivityEvent) => void;
+  onTerminalScreen?: (project: string, text: string) => void;
   onError?: (code: string, message: string) => void;
   onClose?: () => void;
 }
@@ -147,6 +148,17 @@ export class CatoClient {
     this.#send("worker.spawn", { agentKind, path, task: task || undefined });
   }
 
+  /** Live terminal mirror: request the current screen, type a line, or send a raw key. */
+  getTerminal(project: string): void {
+    this.#send("terminal.get", { project });
+  }
+  terminalInput(project: string, text: string): void {
+    this.#send("terminal.input", { project, text });
+  }
+  terminalKey(project: string, key: string): void {
+    this.#send("terminal.key", { project, key });
+  }
+
   /** Send a frame — encrypted (wrapped in `enc`) once an E2E session exists, else plain. */
   #send(type: string, payload: unknown): void {
     if (this.#sessionKey) {
@@ -208,6 +220,8 @@ export class CatoClient {
         return this.handlers.onQuestion?.(p.question as AgentQuestion);
       case "event.push":
         return this.handlers.onActivity?.((p.event as ActivityEvent) ?? ({} as ActivityEvent));
+      case "terminal.screen":
+        return this.handlers.onTerminalScreen?.(String(p.project ?? ""), String(p.text ?? ""));
       case "error":
         return this.handlers.onError?.(String(p.code ?? "error"), String(p.message ?? ""));
     }
