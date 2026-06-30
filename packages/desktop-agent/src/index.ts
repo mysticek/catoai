@@ -71,6 +71,8 @@ async function main(): Promise<void> {
 
   // Wire conversational-question flow: manager detects → phones; phones answer → agent.
   manager.setOnQuestion((q) => ws.pushQuestion(q));
+  // A live prompt (native approve / a menu) → mark that project WAITING on the phones.
+  manager.setOnWaiting((projects) => ws.setWaiting(projects));
   ws.setQuestionResolver((id, i) => void manager.answerQuestion(id, i));
   ws.setSpawnHandler((kind, path, task) => void manager.spawnForProject(kind, path, task));
   manager.start();

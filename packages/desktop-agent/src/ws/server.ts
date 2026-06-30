@@ -21,6 +21,7 @@ import {
   decrypt,
   type CatoEvent,
   type ApprovalRequest,
+  type ProjectStatus,
   type AgentQuestion,
   type ClientMessage,
   type ServerMessage,
@@ -212,7 +213,7 @@ export class WsServer {
           session_id?: string;
         };
         const tool = p.tool_name ?? "Tool";
-        const { title, detail, risk, stats } = summarizeToolCall(tool, p.tool_input ?? {}, p.cwd);
+        const { title, detail } = summarizeToolCall(tool, p.tool_input ?? {}, p.cwd);
 
         // Anti-fatigue: if a standing allow-rule covers this, approve without asking.
         const key = ruleKey(tool, title, detail);
@@ -226,30 +227,11 @@ export class WsServer {
           return;
         }
 
-        const approval: ApprovalRequest = {
-          id: ulid(),
-          project: p.cwd ? basename(p.cwd) : undefined,
-          tool,
-          title,
-          risk,
-          stats,
-          detail,
-          ts: new Date().toISOString(),
-        };
-        // Push the card NOW; let the LLM parse a plain-language summary + quick replies
-        // in the background and send an approval.update when ready (no push-path latency).
-        const decisionP = this.#approvals.request(approval, key, session);
-        if (this.llm) void this.#enrichApproval(approval, tool, detail, risk);
-        const decision = await decisionP;
+        // Don't hijack the decision to mobile-only. Return "ask" so Claude shows its native
+        // approve prompt on the desktop; Cato mirrors that live prompt to the phone (the
+        // project shows WAITING and the terminal lets you tap the choice). Either side decides.
         res.writeHead(200, { "content-type": "application/json" }).end(
-          JSON.stringify({
-            hookSpecificOutput: {
-              hookEventName: "PreToolUse",
-              permissionDecision: decision.decision,
-              permissionDecisionReason:
-                decision.reason ?? (decision.decision === "deny" ? "Denied via Cato" : ""),
-            },
-          }),
+          JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "ask" } }),
         );
       } catch {
         res.writeHead(200, { "content-type": "application/json" }).end(
@@ -267,6 +249,20 @@ export class WsServer {
 
   #broadcast(msg: ServerMessage): void {
     for (const socket of this.#authed) this.#emit(socket, msg);
+  }
+
+  #waiting = new Set<string>(); // projects blocked on a live prompt (from the agent manager)
+
+  /** Update which projects are WAITING and push fresh statuses to all clients. */
+  setWaiting(projects: string[]): void {
+    this.#waiting = new Set(projects);
+    void this.#statuses().then((p) => this.#broadcast(frame("status.update", { projects: p })));
+  }
+
+  /** Current statuses with the live WAITING overlay (a blocked prompt → state "waiting"). */
+  async #statuses(): Promise<ProjectStatus[]> {
+    const list = await this.orchestrator.statuses().catch(() => []);
+    return list.map((p) => (this.#waiting.has(p.name) ? { ...p, state: "waiting" as const } : p));
   }
 
   #broadcastApproval(approval: ApprovalRequest): void {
@@ -375,11 +371,11 @@ export class WsServer {
           if (authenticated) void this.orchestrator.terminalRelease(msg.payload.project);
           return;
         case "status.get":
-          if (authenticated) void this.orchestrator.statuses().then((projects) => this.#emit(socket, frame("status.update", { projects }))).catch(() => {});
+          if (authenticated) void this.#statuses().then((projects) => this.#emit(socket, frame("status.update", { projects }))).catch(() => {});
           return;
         case "session.close":
           if (authenticated) void this.orchestrator.closeSession(msg.payload.project)
-            .then(() => this.orchestrator.statuses())
+            .then(() => this.#statuses())
             .then((projects) => this.#emit(socket, frame("status.update", { projects })))
             .catch(() => {});
           return;
@@ -418,7 +414,7 @@ export class WsServer {
   }
 
   async #pushInitialStatus(socket: WebSocket): Promise<void> {
-    const projects = await this.orchestrator.statuses().catch(() => []);
+    const projects = await this.#statuses();
     if (projects.length) this.#emit(socket, frame("status.update", { projects }));
   }
 

@@ -53,6 +53,8 @@ export class AgentManager {
   #tracked = new Map<string, Tracked>(); // key: tmux session name
   #pendingQuestions = new Map<string, { target: string; numbers: number[] }>();
   #onQuestion: (q: AgentQuestion) => void = () => {};
+  #waiting = new Set<string>(); // projects blocked on a live prompt
+  #onWaiting: (projects: string[]) => void = () => {};
   #timer: ReturnType<typeof setInterval> | undefined;
   #busy = false;
   readonly #discoverMs: number;
@@ -75,6 +77,11 @@ export class AgentManager {
     this.#onQuestion = fn;
   }
 
+  /** Called when the set of projects blocked on a live prompt changes (drives WAITING). */
+  setOnWaiting(fn: (projects: string[]) => void): void {
+    this.#onWaiting = fn;
+  }
+
   /** Answer a pending conversational question by sending the chosen option's number key. */
   async answerQuestion(id: string, optionIndex: number): Promise<void> {
     const p = this.#pendingQuestions.get(id);
@@ -95,28 +102,22 @@ export class AgentManager {
     await this.#checkQuestions();
   }
 
-  /** Surface a LIVE interactive menu (deterministic — numbered options + nav footer on the
-   *  current screen). No LLM, so it can't hallucinate a menu from scrollback. */
+  /** A project is "waiting" while its session shows a LIVE interactive menu — Claude's native
+   *  approve prompt, a numbered choice, etc. (deterministic, from the rendered screen). This
+   *  drives the WAITING badge and self-clears when the prompt is resolved on EITHER side. */
   async #checkQuestions(): Promise<void> {
+    const before = [...this.#waiting].sort().join("|");
     for (const [session, t] of this.#tracked) {
       const vis = (await capturePaneVisible(session)) ?? "";
-      if (vis !== t.lastVisible) {
-        t.lastVisible = vis;
-        if (t.questionId) { this.#pendingQuestions.delete(t.questionId); t.questionId = undefined; }
-      }
-      const menu = parseMenu(vis);
-      if (menu && !t.questionId) {
-        const id = ulid();
-        t.questionId = id;
-        this.#pendingQuestions.set(id, { target: session, numbers: menu.numbers });
-        this.#onQuestion({ id, project: t.projectName, question: menu.question, options: menu.options });
-        this.#log(`question on ${t.projectName}: ${menu.question} [${menu.options.join(" / ")}]`);
-      } else if (!menu && t.questionId) {
-        // The menu is gone (answered/dismissed) → clear so stale cards don't linger.
-        this.#pendingQuestions.delete(t.questionId);
-        t.questionId = undefined;
-      }
+      if (parseMenu(vis)) this.#waiting.add(t.projectName); else this.#waiting.delete(t.projectName);
     }
+    const after = [...this.#waiting].sort().join("|");
+    if (after !== before) this.#onWaiting([...this.#waiting]);
+  }
+
+  /** Projects currently blocked on a live prompt (for the WAITING badge). */
+  waitingProjects(): string[] {
+    return [...this.#waiting];
   }
 
   async stop(): Promise<void> {
