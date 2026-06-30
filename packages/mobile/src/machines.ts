@@ -4,6 +4,7 @@
  * its hostname + platform in `welcome`, so a machine gets a real name once connected.
  */
 import * as FileSystem from "expo-file-system/legacy";
+import * as SecureStore from "expo-secure-store";
 
 export interface Machine {
   address: string; // ws URL — may change with DHCP
@@ -55,11 +56,27 @@ export function applyIdentity(list: Machine[], address: string, info: MachineInf
 
 const FILE = FileSystem.documentDirectory + "cato-machines.json";
 
+// Pairing tokens are secrets → kept in the device Keychain/Keystore (expo-secure-store),
+// keyed by the stable machine id, NOT in the plaintext machines file.
+const tokenKey = (id: string) => `cato.token.${id.replace(/[^A-Za-z0-9._-]/g, "_")}`;
+export async function saveToken(id: string, token: string): Promise<void> {
+  try { await SecureStore.setItemAsync(tokenKey(id), token); } catch { /* best-effort */ }
+}
+export async function loadToken(id: string): Promise<string | undefined> {
+  try { return (await SecureStore.getItemAsync(tokenKey(id))) ?? undefined; } catch { return undefined; }
+}
+export async function deleteToken(id: string): Promise<void> {
+  try { await SecureStore.deleteItemAsync(tokenKey(id)); } catch { /* best-effort */ }
+}
+
 export async function loadMachines(): Promise<Machine[]> {
   try {
     const txt = await FileSystem.readAsStringAsync(FILE);
     const list = JSON.parse(txt) as Machine[];
-    return Array.isArray(list) ? list : [];
+    if (!Array.isArray(list)) return [];
+    // Re-attach tokens from secure storage (they're never in the file).
+    for (const m of list) if (m.id) m.token = await loadToken(m.id);
+    return list;
   } catch {
     return [];
   }
@@ -67,7 +84,8 @@ export async function loadMachines(): Promise<Machine[]> {
 
 export async function saveMachines(list: Machine[]): Promise<void> {
   try {
-    await FileSystem.writeAsStringAsync(FILE, JSON.stringify(list));
+    const safe = list.map((m) => { const c: Machine = { ...m }; delete c.token; return c; });
+    await FileSystem.writeAsStringAsync(FILE, JSON.stringify(safe));
   } catch {
     /* best-effort */
   }

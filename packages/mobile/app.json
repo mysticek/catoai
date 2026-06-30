@@ -12,7 +12,9 @@
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Cato needs the microphone for voice commands.",
         "NSLocalNetworkUsageDescription": "Cato discovers your desktop agents on the local network.",
-        "NSBonjourServices": ["_cato._tcp"]
+        "NSBonjourServices": [
+          "_cato._tcp"
+        ]
       }
     },
     "android": {
@@ -29,7 +31,8 @@
     },
     "plugins": [
       "expo-audio",
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-secure-store"
     ]
   }
 }
