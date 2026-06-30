@@ -46,6 +46,7 @@ const ICON: Record<string, IoniconName> = {
   lockOpen: "lock-open",
   search: "search",
   xCircle: "close-circle",
+  trash: "trash-outline",
   link: "link",
   play: "play",
   stop: "stop",

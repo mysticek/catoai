@@ -435,6 +435,17 @@ export class MemoryEngine {
     }));
   }
 
+  /** Permanently remove a project and all its rows (history delete). */
+  async deleteProject(name: string): Promise<void> {
+    const { rows } = await this.pool.query<{ id: string }>(`SELECT id FROM project WHERE name = $1`, [name]);
+    const id = rows[0]?.id;
+    if (!id) return;
+    for (const t of ["capture_line", "event", "worker", "task"]) {
+      await this.pool.query(`DELETE FROM ${t} WHERE project_id = $1`, [id]).catch(() => {});
+    }
+    await this.pool.query(`DELETE FROM project WHERE id = $1`, [id]).catch(() => {});
+  }
+
   /** A project's absolute folder (for reopening it). */
   async projectRoot(name: string): Promise<string | null> {
     const { rows } = await this.pool.query<{ root_path: string }>(`SELECT root_path FROM project WHERE name = $1`, [name]);

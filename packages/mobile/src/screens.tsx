@@ -380,26 +380,32 @@ export function ActivityScreen({ events }: { events: ActivityEvent[] }) {
 // ----- PROJECTS ---------------------------------------------------------------
 
 export function ProjectsScreen({
-  projects, onOpen, onReopen, onClose, onStart, displayName,
+  projects, onOpen, onReopen, onClose, onDelete, onStart, displayName,
 }: {
   projects: ProjectInfo[];
-  onOpen: (n: string) => void; onReopen: (n: string) => void; onClose: (n: string) => void; onStart: () => void;
+  onOpen: (n: string) => void; onReopen: (n: string) => void; onClose: (n: string) => void; onDelete: (n: string) => void; onStart: () => void;
   displayName?: (name: string) => string;
 }) {
   const live = projects.filter((p) => p.running);
   const past = projects.filter((p) => !p.running);
-  const confirmClose = (n: string) => Alert.alert("Close chat?", `This ends the session for ${displayName?.(n) ?? n}.`, [
+  const label = (n: string) => displayName?.(n) ?? n;
+  const confirmClose = (n: string) => Alert.alert("Close chat?", `This ends the session for ${label(n)}.`, [
     { text: "Cancel", style: "cancel" },
     { text: "Close", style: "destructive", onPress: () => onClose(n) },
+  ]);
+  const confirmDelete = (n: string) => Alert.alert("Remove chat?", `Closes (if running) and permanently removes ${label(n)} from the list.`, [
+    { text: "Cancel", style: "cancel" },
+    { text: "Remove", style: "destructive", onPress: () => onDelete(n) },
   ]);
   const row = (p: ProjectInfo) => (
     <Pressable key={p.name} onPress={() => (p.running ? onOpen(p.name) : onReopen(p.name))} style={st.projRow}>
       <View style={st.projHead}>
         <Dot color={p.running ? C.active : C.idle} glow={p.running} />
-        <Text style={st.projName} numberOfLines={1}>{displayName?.(p.name) ?? p.name}</Text>
+        <Text style={st.projName} numberOfLines={1}>{label(p.name)}</Text>
         {p.running
           ? <Pressable onPress={() => confirmClose(p.name)} hitSlop={8} style={st.projClose}><Icon name="x" size={16} color={C.textDim} /></Pressable>
           : <Text style={st.projReopen}>Reopen</Text>}
+        <Pressable onPress={() => confirmDelete(p.name)} hitSlop={8} style={st.projClose}><Icon name="trash" size={15} color={C.textFaint} /></Pressable>
       </View>
       <View style={st.projFolder}>
         <Icon name="folder" size={12} color={C.textFaint} />
@@ -570,7 +576,10 @@ export function TerminalScreen({
           <Dot color={C.active} glow />
           <Text style={st.termLive}>live</Text>
           {onOpenDesktop && (
-            <Pressable hitSlop={8} onPress={onOpenDesktop}><Icon name="laptop" size={19} color={C.textDim} /></Pressable>
+            <Pressable hitSlop={8} onPress={() => Alert.alert("Open on the computer?", `Opens ${title || project} in a terminal window on the computer running Cato.`, [
+              { text: "Cancel", style: "cancel" },
+              { text: "Open", onPress: onOpenDesktop },
+            ])}><Icon name="laptop" size={19} color={C.textDim} /></Pressable>
           )}
           {onCloseSession && (
             <Pressable

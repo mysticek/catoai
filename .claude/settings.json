@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit|WebFetch",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:8787/hooks/pretooluse?s=01KWA9Z7YDVHQA1VM0WHKER4VD",
+            "timeout": 600
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -184,6 +184,10 @@ export class CatoClient {
   reopenSession(project: string): void {
     this.#send("session.reopen", { project });
   }
+  /** Close (if running) and permanently remove a chat from history. */
+  deleteSession(project: string): void {
+    this.#send("session.delete", { project });
+  }
   /** Open the chat's tmux session in a real terminal window on the computer. */
   openOnDesktop(project: string): void {
     this.#send("session.openDesktop", { project });

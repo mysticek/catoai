@@ -50,7 +50,7 @@ async function main(): Promise<void> {
     resize: (target, cols, rows) => resizeWindow(target, cols, rows),
     autoSize: (target) => autoSizeWindow(target),
     kill: (target) => killSession(target),
-    openDesktop: (target) => openInTerminal(target),
+    openDesktop: (target) => openInTerminal(target, config.desktopTerminal),
   };
   const orchestrator = new Orchestrator(memory, control, {
     spawnWorker: (kind, project) => manager.spawnForProject(kind, project),
@@ -73,6 +73,8 @@ async function main(): Promise<void> {
   manager.setOnQuestion((q) => ws.pushQuestion(q));
   // A live prompt (native approve / a menu) → mark that project WAITING on the phones.
   manager.setOnWaiting((projects) => ws.setWaiting(projects));
+  // A session opened/closed on the desktop → refresh the phones' project lists.
+  manager.setOnChange(() => ws.broadcastStatus());
   ws.setQuestionResolver((id, i) => void manager.answerQuestion(id, i));
   ws.setSpawnHandler((kind, path, task) => void manager.spawnForProject(kind, path, task));
   manager.start();

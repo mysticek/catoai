@@ -259,6 +259,11 @@ export class WsServer {
     void this.#statuses().then((p) => this.#broadcast(frame("status.update", { projects: p })));
   }
 
+  /** Push fresh statuses to all clients (e.g. after a session opened/closed on the desktop). */
+  broadcastStatus(): void {
+    void this.#statuses().then((p) => this.#broadcast(frame("status.update", { projects: p })));
+  }
+
   /** Current statuses with the live WAITING overlay (a blocked prompt → state "waiting"). */
   async #statuses(): Promise<ProjectStatus[]> {
     const list = await this.orchestrator.statuses().catch(() => []);
@@ -377,6 +382,12 @@ export class WsServer {
           if (authenticated) void this.orchestrator.closeSession(msg.payload.project)
             .then(() => this.#statuses())
             .then((projects) => this.#emit(socket, frame("status.update", { projects })))
+            .catch(() => {});
+          return;
+        case "session.delete":
+          if (authenticated) void this.orchestrator.deleteSession(msg.payload.project)
+            .then(() => Promise.all([this.#statuses(), this.orchestrator.projectList()]))
+            .then(([statuses, projects]) => { this.#emit(socket, frame("status.update", { projects: statuses })); this.#emit(socket, frame("projects.all", { projects })); })
             .catch(() => {});
           return;
         case "session.reopen":

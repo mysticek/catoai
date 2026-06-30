@@ -120,6 +120,12 @@ export class Orchestrator {
     if (w?.tmuxTarget) await this.control.kill(w.tmuxTarget).catch(() => {});
   }
 
+  /** Close (if running) then permanently remove a chat from history. */
+  async deleteSession(project: string): Promise<void> {
+    await this.closeSession(project).catch(() => {});
+    await this.memory.deleteProject(project);
+  }
+
   /** All chats (running + past) for the history list. */
   async projectList(): Promise<ProjectInfo[]> {
     return this.memory.allProjects();

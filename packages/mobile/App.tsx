@@ -263,6 +263,10 @@ export default function App() {
     client.current?.reopenSession(name);
     setTimeout(() => client.current?.listProjects(), 2800);
   }, []);
+  const deleteProject = useCallback((name: string) => {
+    client.current?.deleteSession(name);
+    setTimeout(() => client.current?.listProjects(), 800);
+  }, []);
 
   // Poll the open terminal's screen ~1s for a live mirror.
   useEffect(() => {
@@ -407,7 +411,7 @@ export default function App() {
       )}
       {tab === "approvals" && <ApprovalsScreen approvals={approvals} onResolve={(id, d) => resolveApproval(id, d)} onOpen={setDetail} />}
       {tab === "activity" && <ActivityScreen events={activity} />}
-      {tab === "projects" && <ProjectsScreen projects={allProjects} onOpen={openProject} onReopen={reopenProject} onClose={closeProject} onStart={() => setStartOpen(true)} displayName={displayName} />}
+      {tab === "projects" && <ProjectsScreen projects={allProjects} onOpen={openProject} onReopen={reopenProject} onClose={closeProject} onDelete={deleteProject} onStart={() => setStartOpen(true)} displayName={displayName} />}
 
       <TabBar active={tab} onTab={setTab} approvals={pendingCount} />
 

@@ -55,6 +55,7 @@ export class AgentManager {
   #onQuestion: (q: AgentQuestion) => void = () => {};
   #waiting = new Set<string>(); // projects blocked on a live prompt
   #onWaiting: (projects: string[]) => void = () => {};
+  #onChange: () => void = () => {}; // tracked sessions changed (adopt/release)
   #timer: ReturnType<typeof setInterval> | undefined;
   #busy = false;
   readonly #discoverMs: number;
@@ -80,6 +81,11 @@ export class AgentManager {
   /** Called when the set of projects blocked on a live prompt changes (drives WAITING). */
   setOnWaiting(fn: (projects: string[]) => void): void {
     this.#onWaiting = fn;
+  }
+
+  /** Called when sessions are adopted/released (so clients can refresh their lists). */
+  setOnChange(fn: () => void): void {
+    this.#onChange = fn;
   }
 
   /** Answer a pending conversational question by sending the chosen option's number key. */
@@ -137,15 +143,19 @@ export class AgentManager {
       // Adopt only sessions launched via the `cato` wrapper (cato-<project>),
       // never Cato-spawned (cato_*) nor unrelated user tmux sessions.
       const adoptable = all.filter((s) => s.startsWith(ADOPT_PREFIX));
+      const sizeBefore = this.#tracked.size;
       for (const s of adoptable) if (!this.#tracked.has(s)) await this.#adopt(s);
       for (const [s, t] of this.#tracked) {
         if (!live.has(s)) {
           t.source.close();
           this.#tracked.delete(s);
+          this.#waiting.delete(t.projectName);
           await this.memory.stopWorker(t.workerId, t.projectId, t.projectName, "clean");
           this.#log(`released ${s}`);
         }
       }
+      // A session appeared/disappeared (e.g. closed on the PC) → refresh the phones.
+      if (this.#tracked.size !== sizeBefore) this.#onChange();
     } finally {
       this.#busy = false;
     }

@@ -14,6 +14,12 @@ set -euo pipefail
 self="$0"; [ -L "$self" ] && self="$(readlink "$self")"
 selfdir="$(cd "$(dirname "$self")" && pwd)"
 
+# Remember which terminal you launched from, so "Open on computer" reopens in the same one.
+if [ -n "${TERM_PROGRAM:-}" ]; then
+  mkdir -p "$HOME/.cato" 2>/dev/null || true
+  printf '%s' "$TERM_PROGRAM" > "$HOME/.cato/terminal" 2>/dev/null || true
+fi
+
 case "${1:-}" in
   help|-h|--help)
     cat <<'USAGE'

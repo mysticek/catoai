@@ -18,6 +18,9 @@ export interface Config {
   ffmpegBin: string;
   workspaceRoot: string;
   llmModel: string;
+  /** Optional override for opening a session in a desktop terminal. Use {cmd} or {session};
+   *  e.g. "wezterm start -- {cmd}" or "wt -- {cmd}". Empty = auto-detect per OS. */
+  desktopTerminal: string;
 }
 
 export const CONFIG_FILE = join(homedir(), ".cato", "config.json");
@@ -54,5 +57,6 @@ export function loadConfig(): Config {
     // gemma3:4b = non-reasoning multilingual instruct → clean Slovak summaries + JSON
     // intent classification (qwen3 is a reasoning model and leaks its thinking into prose).
     llmModel: get("LLM_MODEL", "llmModel", "gemma3:4b"),
+    desktopTerminal: get("DESKTOP_TERMINAL", "desktopTerminal", ""),
   };
 }

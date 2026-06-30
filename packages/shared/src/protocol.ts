@@ -58,6 +58,7 @@ export type ClientMessage =
   | Envelope<"status.get", Record<string, never>>
   // Close a running chat (kills its session) / list all chats incl. past ones (history).
   | Envelope<"session.close", { project: string }>
+  | Envelope<"session.delete", { project: string }>
   | Envelope<"session.reopen", { project: string }>
   | Envelope<"session.openDesktop", { project: string }>
   | Envelope<"projects.list", Record<string, never>>
