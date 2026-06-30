@@ -4,8 +4,9 @@
  * four tabs (Talk / Approvals / Activity / Projects). Implements Cato.dc.html.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Dimensions, Pressable, StyleSheet, Text, View } from "react-native";
-import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { ActivityIndicator, Alert, Dimensions, Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
+// NOTE: SafeAreaView from react-native is deprecated; migrate to react-native-safe-area-context
+// on the next NATIVE rebuild (it's a native module, so importing it on a JS-only build crashes).
 import { StatusBar } from "expo-status-bar";
 import * as Speech from "expo-speech";
 import Constants from "expo-constants";
@@ -26,14 +27,6 @@ const extra = (Constants.expoConfig?.extra ?? {}) as { desktopWsUrl?: string; pa
 const TTS: Record<string, string> = { en: "en-US", sk: "sk-SK", cs: "cs-CZ" };
 
 export default function App() {
-  return (
-    <SafeAreaProvider>
-      <AppInner />
-    </SafeAreaProvider>
-  );
-}
-
-function AppInner() {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [active, setActive] = useState("");
   const [connectingTo, setConnectingTo] = useState<string | undefined>();
