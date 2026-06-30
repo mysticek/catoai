@@ -80,9 +80,25 @@ export async function killSession(name: string): Promise<void> {
   await exec("tmux", ["kill-session", "-t", name]).catch(() => {});
 }
 
-/** Force a window to a given size (so a phone viewer reflows the TUI to its width), even
- *  when a desktop client is attached. Pair with autoSizeWindow() to release it. */
+/** How many tmux clients are attached to a session (a desktop terminal is a client). */
+async function clientCount(target: string): Promise<number> {
+  try {
+    const session = target.split(":")[0] ?? target;
+    const { stdout } = await exec("tmux", ["list-clients", "-t", session, "-F", "x"]);
+    return stdout.split("\n").filter(Boolean).length;
+  } catch {
+    return 0;
+  }
+}
+
+/** Reflow a phone viewer's pane to its width — but ONLY when no desktop terminal is attached,
+ *  so we never shrink the user's real terminal. When a client is attached we leave the window
+ *  following the desktop (full size); the phone then just wraps. */
 export async function resizeWindow(target: string, cols: number, rows: number): Promise<void> {
+  if (await clientCount(target) > 0) {
+    await exec("tmux", ["set-window-option", "-t", target, "window-size", "largest"]).catch(() => {});
+    return;
+  }
   const c = Math.max(20, Math.min(400, Math.floor(cols)));
   const r = Math.max(10, Math.min(200, Math.floor(rows)));
   await exec("tmux", ["set-window-option", "-t", target, "window-size", "manual"]).catch(() => {});
@@ -91,7 +107,8 @@ export async function resizeWindow(target: string, cols: number, rows: number): 
 
 /** Let the window follow its attached client(s) again (restores the desktop size). */
 export async function autoSizeWindow(target: string): Promise<void> {
-  await exec("tmux", ["set-window-option", "-t", target, "window-size", "latest"]).catch(() => {});
+  await exec("tmux", ["set-window-option", "-t", target, "window-size", "largest"]).catch(() => {});
+  await exec("tmux", ["resize-window", "-t", target, "-A"]).catch(() => {}); // snap to attached client
 }
 
 /** List Cato-owned sessions (those with our prefix). */
